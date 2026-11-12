@@ -8,7 +8,7 @@ from .engine import Intervention
 from .lineage import project
 from .mailbox import BundleDelivered, MailboxFailed, MailboxRuntime
 from .packet_runtime import PacketFailed
-from .participants import StagedMessage
+from .participants import DeliveryState, StagedMessage
 from .polling import PollRuntime
 from .steps import Action
 from .storage_simulation import StorageSimulation
@@ -80,7 +80,7 @@ class Laboratory(StorageSimulation):
                   else "decrypted unverified reply key",fingerprint=fingerprint)
         self.emit("reply_key_encapsulated",ctx,container=uid,field="encrypted reply public key")
         self.emit("message_encrypted",ctx,size=len(wire)-32,algorithm="X25519/HKDF-SHA-256/AES-256-GCM")
-        state="sent" if msg.direction=="forward" else "replied"
+        state: DeliveryState="sent" if msg.direction=="forward" else "replied"
         self.devices.log(msg,msg.sender_id,state,self.now,msg.text)
         self.emit("device_log_updated",ctx,person_id=msg.sender_id,state=state)
         self.packets.outbox[msg.sender_id].append((uid,msg.target_id,wire,msg.direction))

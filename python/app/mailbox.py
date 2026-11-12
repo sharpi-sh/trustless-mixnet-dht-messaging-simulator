@@ -21,7 +21,7 @@ from .polling import MailboxItem
 from .steps import Action
 from .storage import MessageManifest
 from .traffic import Lane
-from .vault_runtime import Placed, Reconstructed, VaultFailed
+from .vault_runtime import BytesReturned, Placed, Reconstructed, VaultFailed, VaultRead
 
 if TYPE_CHECKING:
     from .storage_simulation import StorageSimulation
@@ -158,7 +158,7 @@ class MailboxRuntime:
         if transit:
             self._move(step)
         else:
-            self.sim.schedule(step, self.sim.config.ack_timeout_ms)
+            self.sim.schedule(replace(step, source=step.target), self.sim.config.ack_timeout_ms)
 
     def _publish(self, action: PacketDelivered) -> None:
         handle = self.sim.rng.getrandbits(160).to_bytes(20, "big")
@@ -238,7 +238,7 @@ class MailboxRuntime:
         elif action.stage == _Stage.PUBLISH or action.stage == _Stage.LOOKUP:
             job.pending = action
             writing = action.stage == _Stage.PUBLISH
-            if not writing:
+            if not writing and action.source != action.target:
                 self._tor(job, action, False)
             sim.schedule(
                 DHTRequest(
@@ -268,13 +268,15 @@ class MailboxRuntime:
             sim.emit(
                 "manifest_retrieved",
                 replace(action, source=person.id, message_id=job.message_id),
-                artefact_id=contents.manifest.id,
+                artefact_id=sha256(action.data).hexdigest(),
+                container=contents.manifest.id,
                 size=len(action.data),
                 integrity="verified",
             )
             self._move(job.step(_Stage.FETCH, person.id, person.tor.id, manifest=contents.manifest))
         elif action.stage == _Stage.FETCH:
-            self._tor(job, action, True)
+            if action.source != action.target:
+                self._tor(job, action, True)
             assert action.manifest is not None
             job.pending = action
             sim.vaults.fetch(replace(action, source=person.tor.id), action.manifest)
@@ -294,6 +296,12 @@ class MailboxRuntime:
             )
 
     def handle(self, action: Action) -> bool:
+        if isinstance(action, VaultRead):
+            owner = self._jobs.get(action.token)
+            if owner is not None and not owner.egress:
+                # Each successful storage request and response crosses the device's Tor abstraction.
+                self._tor(owner, action, isinstance(action, BytesReturned))
+            return False
         if isinstance(action, PacketDelivered):
             self._publish(action)
             return True
@@ -306,7 +314,9 @@ class MailboxRuntime:
             return False
         job = self._jobs.get(action.token)
         if job is None:
-            return isinstance(action, (MailboxStep, MailboxTimeout))
+            return isinstance(action, (MailboxStep, MailboxTimeout)) or action.token.startswith(
+                "mailbox-"
+            )
         if not job.egress and not self.sim.clients.people[job.recipient].polling_enabled:
             self._restore(job)
             return True

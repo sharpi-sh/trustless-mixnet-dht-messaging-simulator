@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from .engine import Engine
+from .participants import Direction
 from .steps import Action
 
 CELL_BYTES = 256
@@ -82,7 +83,7 @@ class PollRuntime:
 
     def _transit(self, pull: _Pull, hop: int) -> None:
         uid = pull.route[0]
-        lane = "reply" if self.sim.clients.people[uid].role == "sender" else "forward"
+        lane: Direction = "reply" if self.sim.clients.people[uid].role == "sender" else "forward"
         source, target = pull.route[hop - 1], pull.route[hop]
         arrival = PollHop(source=source, target=target, lane=lane, token=pull.token, person_id=uid, hop=hop)
         failure = PollFailure(source=source, target=target, lane=lane, token=pull.token, person_id=uid)
