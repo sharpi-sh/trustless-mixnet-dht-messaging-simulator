@@ -13,7 +13,7 @@ def bind_local(first: int, last: int) -> socket.socket:
         sock = socket.socket()
         try:
             sock.bind(("127.0.0.1", port))
-            sock.listen(128)
+            sock.setblocking(False)
         except OSError as exc:
             sock.close()
             if exc.errno == errno.EADDRINUSE:
@@ -33,8 +33,11 @@ def main() -> None:
         app.state.port = port
         print(f"HTTP API: http://127.0.0.1:{port}\nWebSocket: ws://127.0.0.1:{port}/ws\n"
               "Ready for frontend connection.", flush=True)
-        uvicorn.Server(uvicorn.Config(app)).run(sockets=[sock])
+        uvicorn.Server(uvicorn.Config(app, loop="asyncio")).run(sockets=[sock])
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
