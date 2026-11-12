@@ -65,10 +65,36 @@ class Engine(Simulation):
         self.availability = Availability(config, self.topology, Random(self.rng.getrandbits(128)))
         for at, action in self.availability.start():
             if isinstance(action, AvailabilityChange) and at == 0:
-                self.topology.nodes[action.source].online = action.online
-                self.topology.nodes[action.source].history.append((0, action.online))
+                for node_id in self.availability_members(action.source):
+                    node = self.topology.nodes[node_id]
+                    node.online = action.online
+                    node.history.append((0, action.online))
             else:
                 self.schedule(action, at)
+
+    def availability_members(self, uid: str) -> tuple[str, ...]:
+        owner = self.availability.direct_owners.get(uid, uid)
+        channel = self.topology.channel_ids.get(owner)
+        if channel in self.availability.direct_owners:
+            assert channel is not None
+            return owner, channel
+        return (uid,)
+
+    def channel_crossing(self, owner: str, action: Action, *, entering: bool, **details: Any) -> None:
+        channel = self.clients.people[owner].tor
+        if entering:
+            channel.enter()
+        else:
+            channel.exit()
+        path = self.topology.paths[self.topology.path_id(action.source, action.target)]
+        self.emit(
+            f"{channel.kind}_{'entry' if entering else 'exit'}",
+            action,
+            owner=owner,
+            channel=channel.kind,
+            ip_hop=path.ip_hops[action.source].model_dump(),
+            **details,
+        )
 
     def make_step(self, action: Action, delay_ms: int) -> SimulationStep:
         if delay_ms < 0:
@@ -189,6 +215,8 @@ class Engine(Simulation):
             transit_id=uid,
             reason=origin.value,
             dispatched=origin.dispatched,
+            ip_hop=path.ip_hops[action.source].model_dump(),
+            ip_observation="not_received",
         )
         if isinstance(callback, TransportFailure):
             callback = replace(callback, origin=origin)
@@ -198,11 +226,11 @@ class Engine(Simulation):
         path = self.topology.paths[self.topology.path_id(action.source, action.target)]
         path.attempted += 1
         uid = f"transit-{self.serial}-{path.attempted}"
-        if path.blocked or not self.topology.nodes[action.source].online:
+        if (not path.local and path.blocked) or not self.topology.nodes[action.source].online:
             origin = FailureOrigin.BLOCKED if path.blocked else FailureOrigin.SOURCE_OFFLINE
             self._transport_failure(action, path, uid, action.failure, origin)
             return
-        delay = path.delay(self.rng)
+        delay = 0 if path.local else path.delay(self.rng)
         end = Arrival(
             source=action.source,
             target=action.target,
@@ -230,31 +258,45 @@ class Engine(Simulation):
             delay_ms=delay,
             start_ms=self.now,
             end_ms=self.now + delay,
+            ip_hop=path.ip_hops[action.source].model_dump(),
+            ip_observation="local" if path.local else "in_transit",
         )
-        self.schedule(end, delay)
+        if path.local:
+            # The direct interface is part of the device, without a second network journey.
+            self.arrive(end)
+        else:
+            self.schedule(end, delay)
 
     def arrive(self, action: Arrival, drop: bool = False) -> None:
         if not self.in_flight.pop(action.transit_id, None):
             return
         path = self.topology.paths[self.topology.path_id(action.source, action.target)]
         del path.active[action.transit_id]
-        if drop or not self.topology.nodes[action.target].online:
+        if not path.local and (drop or not self.topology.nodes[action.target].online):
             path.dropped += int(drop)
             origin = FailureOrigin.DROPPED if drop else FailureOrigin.TARGET_OFFLINE
             self._transport_failure(action, path, action.transit_id, action.transit.failure, origin)
         else:
             path.completed += 1
             self.topology.nodes[action.target].last_activity = self.now
-            self.emit("path_transit_completed", action, path_id=path.id, transit_id=action.transit_id)
+            self.emit(
+                "path_transit_completed",
+                action,
+                path_id=path.id,
+                transit_id=action.transit_id,
+                ip_hop=path.ip_hops[action.source].model_dump(),
+                ip_observation="local" if path.local else "received",
+            )
             self.schedule(action.transit.success)
 
     def change_node(self, uid: str, online: bool, reason: str) -> None:
-        node = self.topology.nodes[uid]
-        if node.online != online:
-            node.online = online
-            node.history.append((self.now, online))
-            node.failure_count += int(not online)
-            self.emit("node_status_changed", Action(source=uid), online=online, reason=reason)
+        for node_id in self.availability_members(uid):
+            node = self.topology.nodes[node_id]
+            if node.online != online:
+                node.online = online
+                node.history.append((self.now, online))
+                node.failure_count += int(not online)
+                self.emit("node_status_changed", Action(source=node_id), online=online, reason=reason)
 
     def intervene(self, action: Intervention) -> StepResult:
         if not action.token:
@@ -294,6 +336,9 @@ class Engine(Simulation):
             )
             if not selected_paths:
                 raise ValueError("Unknown stage boundary")
+            selected_paths = [path for path in selected_paths if not path.local]
+            if not selected_paths:
+                raise ValueError("The direct interface handoff has no network link to block")
             for path in selected_paths:
                 path.blocked = not action.enabled
                 path.blocked_at = self.now if path.blocked else None

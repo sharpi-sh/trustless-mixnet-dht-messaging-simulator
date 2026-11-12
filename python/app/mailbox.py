@@ -21,7 +21,7 @@ from .polling import MailboxItem
 from .steps import Action
 from .storage import MessageManifest
 from .traffic import Lane
-from .vault_runtime import BytesReturned, Placed, Reconstructed, VaultFailed, VaultRead
+from .vault_runtime import BytesReturned, Placed, Reconstructed, VaultFailed, VaultMiss, VaultRead
 
 if TYPE_CHECKING:
     from .storage_simulation import StorageSimulation
@@ -221,14 +221,6 @@ class MailboxRuntime:
         self._jobs[job.token] = job
         self._move(job.step(_Stage.ENTER, person.id, person.tor.id))
 
-    def _tor(self, job: _Job, action: Action, entry: bool) -> None:
-        tor = self.sim.clients.people[job.recipient].tor
-        if entry:
-            tor.enter()
-        else:
-            tor.exit()
-        self.sim.emit("tor_entry" if entry else "tor_exit", action, owner=job.recipient)
-
     def _step(self, job: _Job, action: MailboxStep) -> None:
         sim = self.sim
         person = sim.clients.people[job.recipient]
@@ -239,7 +231,7 @@ class MailboxRuntime:
             job.pending = action
             writing = action.stage == _Stage.PUBLISH
             if not writing and action.source != action.target:
-                self._tor(job, action, False)
+                sim.channel_crossing(job.recipient, action, entering=False)
             sim.schedule(
                 DHTRequest(
                     source=job.gateway,
@@ -255,13 +247,13 @@ class MailboxRuntime:
             sim.inboxes[job.recipient].messages.append(job.handle)
             self._end(job)
         elif action.stage == _Stage.ENTER:
-            self._tor(job, action, True)
+            sim.channel_crossing(job.recipient, action, entering=True)
             self._move(job.step(_Stage.LOOKUP, person.tor.id, job.gateway))
         elif action.stage == _Stage.RETURN:
-            self._tor(job, action, True)
+            sim.channel_crossing(job.recipient, action, entering=True)
             self._move(job.step(_Stage.OPEN, person.tor.id, person.id, data=action.data))
         elif action.stage == _Stage.OPEN:
-            self._tor(job, action, False)
+            sim.channel_crossing(job.recipient, action, entering=False)
             decrypted = unseal(person.private_key, action.data, "manifest")
             contents = _ManifestContents.model_validate_json(decrypted)
             job.message_id = contents.message_id
@@ -276,12 +268,12 @@ class MailboxRuntime:
             self._move(job.step(_Stage.FETCH, person.id, person.tor.id, manifest=contents.manifest))
         elif action.stage == _Stage.FETCH:
             if action.source != action.target:
-                self._tor(job, action, True)
+                sim.channel_crossing(job.recipient, action, entering=True)
             assert action.manifest is not None
             job.pending = action
             sim.vaults.fetch(replace(action, source=person.tor.id), action.manifest)
         elif action.stage == _Stage.FINISH:
-            self._tor(job, action, False)
+            sim.channel_crossing(job.recipient, action, entering=False)
             self._end(job)
             self._finished.add((job.recipient, job.handle))
             sim.schedule(
@@ -298,9 +290,14 @@ class MailboxRuntime:
     def handle(self, action: Action) -> bool:
         if isinstance(action, VaultRead):
             owner = self._jobs.get(action.token)
-            if owner is not None and not owner.egress:
-                # Each successful storage request and response crosses the device's Tor abstraction.
-                self._tor(owner, action, isinstance(action, BytesReturned))
+            if owner is not None and not owner.egress and not isinstance(action, VaultMiss):
+                # VaultRead success callbacks retain request orientation for replica selection.
+                # BytesReturned actually travels from the vault back to the access channel.
+                returning = isinstance(action, BytesReturned)
+                leg = (
+                    replace(action, source=action.target, target=action.source) if returning else action
+                )
+                self.sim.channel_crossing(owner.recipient, leg, entering=returning)
             return False
         if isinstance(action, PacketDelivered):
             self._publish(action)
@@ -324,7 +321,15 @@ class MailboxRuntime:
             if isinstance(action, MailboxTimeout):
                 self._retry(job, action.continuation, "Mailbox transport unresponsive", transit=True)
             elif isinstance(action, MailboxStep):
-                self._step(job, action)
+                if not self.sim.topology.nodes[action.target].online:
+                    self._retry(
+                        job,
+                        action,
+                        "Receiving node unavailable",
+                        transit=action.source != action.target,
+                    )
+                else:
+                    self._step(job, action)
             elif isinstance(action, VaultFailed):
                 assert job.pending is not None
                 self._retry(job, job.pending, action.reason, transit=False)
@@ -350,10 +355,10 @@ class MailboxRuntime:
                 else:
                     assert action.result.value is not None
                     job.pending = None
-                    tor = self.sim.clients.people[job.recipient].tor.id
-                    self._move(job.step(_Stage.RETURN, job.gateway, tor, data=action.result.value))
+                    channel = self.sim.clients.people[job.recipient].tor.id
+                    self._move(job.step(_Stage.RETURN, job.gateway, channel, data=action.result.value))
             elif isinstance(action, Reconstructed):
-                tor = self.sim.clients.people[job.recipient].tor.id
+                channel = self.sim.clients.people[job.recipient].tor.id
                 job.pending = None
                 self.sim.emit(
                     "message_reconstructed",
@@ -362,7 +367,7 @@ class MailboxRuntime:
                     size=len(action.ciphertext),
                     integrity="verified",
                 )
-                self._move(job.step(_Stage.FINISH, tor, job.recipient, data=action.ciphertext))
+                self._move(job.step(_Stage.FINISH, channel, job.recipient, data=action.ciphertext))
         except ValueError:
             self._fail(job, "Invalid mailbox envelope or manifest")
         return True
