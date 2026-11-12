@@ -290,10 +290,51 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     page.getByRole('heading', { name: 'Event timeline', exact: true }),
   ).toBeVisible();
   await chooseFilter(field('Timeline message'), 'msg-1');
+  await chooseFilter(field('Event category'), 'Failures/retries');
+  const timeline = page.getByRole('region', {
+    name: 'Event timeline',
+    exact: true,
+  });
+  await timeline
+    .getByRole('button', { name: 'packet_retry_scheduled', exact: true })
+    .first()
+    .click();
+  await expect(
+    timeline.getByRole('heading', {
+      name: 'packet_retry_scheduled',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(timeline.locator('pre')).toContainText('"previous_packet_id"');
+  await expect(timeline.locator('tbody tr td:nth-child(5)').first()).toHaveText(
+    'msg-1',
+  );
   await expect(
     page.getByRole('heading', { name: 'Cryptographic lineage', exact: true }),
   ).toBeVisible();
   await chooseFilter(field('Lineage message'), 'msg-1');
+  const ledger = page.getByRole('region', {
+    name: 'Cryptographic lineage',
+    exact: true,
+  });
+  await expect(
+    ledger.getByText('reply_key_encapsulated', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    ledger.getByText('reply_key_learned', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    ledger.getByText('fragment_retrieved', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    ledger.getByText('message_decrypted', { exact: true }),
+  ).toBeVisible();
+  const deviceLog = graph.locator(
+    '[data-node-id="receiver-1"] [aria-label="Bob device log"]',
+  );
+  const row = deviceLog.locator('.logrow').filter({ hasText: edited });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('time')).toHaveAttribute('title', /^\d+ ms$/);
   expect(errors).toEqual([]);
   if (process.env.SIM_GRAPH_EVIDENCE) {
     await mkdir(process.env.SIM_GRAPH_EVIDENCE, { recursive: true });
@@ -303,4 +344,71 @@ test('completes the live thirty-transmission scenario with edited text, polling,
       animations: 'disabled',
     });
   }
+});
+
+test('applies selected-receiver, node and stage-boundary interventions to Python', async ({
+  page,
+  backend,
+}) => {
+  await connect(page, backend.url);
+  await page.getByLabel('Receivers', { exact: true }).fill('2');
+  const id = await createSimulation(page, backend),
+    read = () => backend.state(id);
+  const before = await read(),
+    panel = page.getByRole('region', {
+      name: 'Runtime interventions',
+      exact: true,
+    });
+  const button = (name: string) =>
+    panel.getByRole('button', { name, exact: true });
+  const inspect = page.getByLabel('Inspect node', { exact: true });
+  await inspect.selectOption('receiver-2');
+  await button('Disable receiver polling').click();
+  const polling = async () =>
+    (await read()).devices
+      .filter((d) => d.role === 'receiver')
+      .map((d) => d.polling_enabled);
+  await expect.poll(polling).toEqual([true, false]);
+  await expect(panel.getByRole('status')).toContainText('Applied');
+  await button('Enable receiver polling').click();
+  await expect.poll(polling).toEqual([true, true]);
+  await inspect.selectOption('mix-1');
+  await button('Take node offline').click();
+  await expect
+    .poll(
+      async () =>
+        (await read()).topology.nodes.find((n) => n.id === 'mix-1')?.online,
+    )
+    .toBe(false);
+  await button('Bring node online').click();
+  await expect
+    .poll(
+      async () =>
+        (await read()).topology.nodes.find((n) => n.id === 'mix-1')?.online,
+    )
+    .toBe(true);
+  const boundary = before.topology.paths.find(
+    (p) => p.source_id === 'provider-west' && p.target_id.startsWith('mix-'),
+  )!.boundary;
+  const expected = before.topology.paths
+    .filter((p) => p.boundary === boundary)
+    .map((p) => p.id)
+    .sort();
+  expect(expected.length).toBeGreaterThan(1);
+  await panel
+    .getByLabel('Stage boundary', { exact: true })
+    .selectOption(boundary);
+  await panel
+    .getByRole('checkbox', { name: 'Drop traffic already in flight' })
+    .check();
+  await button('Block boundary').click();
+  const blocked = async () =>
+    (await read()).topology.paths
+      .filter((p) => p.blocked)
+      .map((p) => p.id)
+      .sort();
+  await expect.poll(blocked).toEqual(expected);
+  await button('Restore boundary').click();
+  await expect.poll(blocked).toEqual([]);
+  await expect(panel.getByRole('status')).toContainText('Applied');
 });
