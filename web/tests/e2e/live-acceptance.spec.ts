@@ -168,25 +168,22 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   });
   await button('Pause').click();
   await expect.poll(async () => (await read()).status).toBe('paused');
-  for (
-    let i = 0;
-    i < 80 && !(await graph.locator('[data-transit-id]').count());
-    i++
-  ) {
-    const sequence = (await read()).sequence;
+  let paused = await read();
+  const activeTransit = (state: Snapshot) =>
+    state.topology.paths.flatMap((p) => Object.keys(p.active))[0];
+  for (let i = 0; i < 80 && !activeTransit(paused); i++) {
+    const sequence = paused.sequence;
     await button('Step').click();
     await expect
       .poll(async () => (await read()).sequence)
       .toBeGreaterThan(sequence);
+    paused = await read();
   }
-  const marker = graph.locator('[data-transit-id]').first();
+  const transitId = activeTransit(paused);
+  expect(transitId).toBeTruthy();
+  const marker = graph.locator('[data-transit-id="' + transitId + '"]');
   await expect(marker).toBeAttached();
-  const paused = await read();
-  const transitId = await marker.getAttribute('data-transit-id');
   const point = await marker.getAttribute('transform');
-  expect(
-    paused.topology.paths.some((p) => Object.hasOwn(p.active, transitId!)),
-  ).toBe(true);
   await page.evaluate(
     () =>
       new Promise((resolve) =>
