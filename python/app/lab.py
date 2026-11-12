@@ -8,14 +8,16 @@ from typing import Any
 
 from .config import Config
 from .devices import DeviceProtocol
-from .engine import Intervention
+from .dht_runtime import IncomingRPC
+from .engine import Intervention, Transit
 from .lineage import project
-from .mailbox import BundleDelivered, MailboxFailed, MailboxRuntime
-from .packet_runtime import PacketFailed
+from .mailbox import BundleDelivered, MailboxFailed, MailboxRuntime, MailboxStep
+from .packet_runtime import PacketArrival, PacketFailed
 from .participants import DeliveryState, StagedMessage
 from .polling import PollRuntime
 from .steps import Action
 from .storage_simulation import StorageSimulation
+from .vault_runtime import BytesReturned, VaultRead, VaultWrite
 
 
 @dataclass(kw_only=True)
@@ -36,7 +38,48 @@ class Laboratory(StorageSimulation):
         for msg in self.clients.messages.values():
             self.order.setdefault(msg.conversation_id, []).append(msg.id)
 
+    def cargo(self, hop: Action) -> dict[str, Any]:
+        """Public description captured at departure, before a relay changes the packet."""
+
+        def encrypted(data: bytes) -> dict[str, Any]:
+            return {
+                "bytes": len(data),
+                "sha256": sha256(data).hexdigest(),
+                "first_16_bytes_hex": data[:16].hex(),
+            }
+
+        if isinstance(hop, PacketArrival):
+            packet = self.packets.traffic.packets[hop.token]
+            return {"kind": "Sphinx packet", "attempt": packet.attempt, **encrypted(packet.wire)}
+        if isinstance(hop, IncomingRPC):
+            rpc = hop.wire
+            return {
+                "kind": "Kademlia RPC",
+                "method": rpc.method,
+                "reply": rpc.reply,
+                "rpc_id": f"{rpc.rpc_id:040x}",
+                **(encrypted(rpc.record.value) if rpc.record else {}),
+            }
+        if isinstance(hop, BytesReturned):
+            return {"kind": "Encrypted fragment", "index": hop.index, **encrypted(hop.data)}
+        if isinstance(hop, VaultWrite):
+            job = self.vaults.writes[hop.token]
+            fragment = job.manifest.fragments[hop.index]
+            return {
+                "kind": "Encrypted fragment",
+                "index": hop.index,
+                "fragment_id": fragment.id,
+                **encrypted(job.ciphertext[fragment.offset : fragment.offset + fragment.size]),
+            }
+        if isinstance(hop, VaultRead):
+            return {"kind": "Fragment request", "index": hop.index, "replica": hop.replica + 1}
+        if isinstance(hop, MailboxStep):
+            return {"kind": hop.stage.value, **(encrypted(hop.data) if hop.data else {})}
+        return {"kind": type(hop).__name__}
+
     def emit(self, kind: str, action: Action, **details: Any) -> None:
+        if kind == "path_transit_started" and isinstance(action, Transit) and action.message_id:
+            details["cargo"] = self.cargo(action.success)
         super().emit(kind, action, **details)
         row = project(self.events[-1])
         if row is not None:
