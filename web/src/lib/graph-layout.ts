@@ -28,6 +28,7 @@ export interface GraphNode extends SimulationNodeDatum {
   cy: number;
   w: number;
   h: number;
+  circular?: boolean;
 }
 export interface StageBand {
   index: number;
@@ -46,11 +47,10 @@ export interface GraphLayout {
 type Point = { x: number; y: number };
 
 function metrics(kind: LabNode['kind']) {
-  if (kind === 'person') return { w: 146, h: 88 };
-  if (kind === 'storage' || kind === 'dht') return { w: 60, h: 44 };
-  if (kind === 'shadowsocks') return { w: 133, h: 48 };
-  if (kind === 'mix') return { w: 55, h: 44 };
-  return { w: 68, h: 48 };
+  if (kind === 'storage' || kind === 'dht') return { w: 30, h: 22 };
+  if (kind === 'shadowsocks') return { w: 66, h: 24 };
+  if (kind === 'mix') return { w: 28, h: 22 };
+  return { w: 34, h: 24 };
 }
 
 export function layoutTopology(
@@ -63,14 +63,28 @@ export function layoutTopology(
   const groups = Array.from(group(nodes, (n) => n.stage_index)).sort(
     ([a], [b]) => a - b,
   );
-  const insetX = 10,
+  const networks = groups.filter(([, entries]) => entries[0].kind !== 'person');
+  const people = groups.filter(([, entries]) => entries[0].kind === 'person');
+  const avatarDiameter = 40,
+    avatarPitch = 72,
+    avatarGutter = 60;
+  const firstNetwork = networks[0]?.[0] ?? 1;
+  const left = people
+    .filter(([index]) => index < firstNetwork)
+    .flatMap(([, entries]) => entries);
+  const right = people
+    .filter(([index]) => index >= firstNetwork)
+    .flatMap(([, entries]) => entries);
+  const leftMargin = left.length ? avatarGutter : 10;
+  const rightMargin = right.length ? avatarGutter : 10;
+  const insetX = 14,
     bandGap = 7,
-    columnGap = 10,
-    rowGap = 18;
+    columnGap = 35,
+    rowGap = 38;
   const top = 56,
     bottom = 32;
   function plan(rowLimit: number) {
-    const bands = groups.map(([index, entries]) => {
+    const bands = networks.map(([index, entries]) => {
       const kind = entries[0].kind;
       const { w, h } = metrics(kind);
       const cols =
@@ -86,17 +100,21 @@ export function layoutTopology(
         h,
         cols,
         rows,
-        width: cols * w + (cols - 1) * columnGap + 2 * insetX,
+        width: Math.max(110, cols * w + (cols - 1) * columnGap + 2 * insetX),
         height: rows * h + (rows - 1) * rowGap,
       };
     });
     return {
       bands,
       width:
-        2 * insetX +
+        leftMargin +
+        rightMargin +
         bands.reduce((sum, p) => sum + p.width + bandGap, 0) -
         bandGap,
-      height: top + Math.max(100, ...bands.map((p) => p.height)) + bottom,
+      height: Math.max(
+        top + Math.max(100, ...bands.map((p) => p.height)) + bottom,
+        Math.max(left.length, right.length) * avatarPitch + 30,
+      ),
     };
   }
   let chosen = plan(6);
@@ -130,7 +148,7 @@ export function layoutTopology(
   }
   const body = height - top - bottom;
   const extraWidth = (width - chosen.width) / Math.max(1, chosen.bands.length);
-  let x = insetX;
+  let x = leftMargin;
   for (const p of chosen.bands) {
     const bandWidth = p.width + extraWidth;
     stages.push({
@@ -142,12 +160,7 @@ export function layoutTopology(
       kind: p.kind,
     });
     p.entries.forEach((n, i) => {
-      const cx =
-        x +
-        (bandWidth - p.width) / 2 +
-        insetX +
-        p.w / 2 +
-        (i % p.cols) * (p.w + columnGap);
+      const cx = x + (((i % p.cols) + 0.5) * bandWidth) / p.cols;
       const cy =
         top +
         (p.rows === 1
@@ -156,6 +169,26 @@ export function layoutTopology(
       points.push({ id: n.id, x: cx, y: cy, cx, cy, w: p.w, h: p.h });
     });
     x += bandWidth + bandGap;
+  }
+  for (const [entries, cx] of [
+    [left, avatarGutter / 2],
+    [right, width - avatarGutter / 2],
+  ] as const) {
+    entries.forEach((n, i) => {
+      const cy = height / 2 + (i - (entries.length - 1) / 2) * avatarPitch;
+      points.push({
+        id: n.id,
+        x: cx,
+        y: cy,
+        cx,
+        cy,
+        fx: cx,
+        fy: cy,
+        w: avatarDiameter,
+        h: avatarDiameter,
+        circular: true,
+      });
+    });
   }
   // Column anchors constrain the small link/collision adjustment, even at 64 DHT peers.
   const anchors = new Map(points.map((n) => [n.id, n]));
@@ -234,6 +267,17 @@ export function laneCurve(
     );
   start.y = clampPort(start.y, a.y, a.h);
   end.y = clampPort(end.y, b.y, b.h);
+  if (Math.abs(dx) >= 15) {
+    for (const [point, node, side] of [
+      [start, a, Math.sign(dx)],
+      [end, b, -Math.sign(dx)],
+    ] as const) {
+      if (node.circular) {
+        const dy = point.y - node.y;
+        point.x = node.x + side * Math.sqrt((node.w / 2) ** 2 - dy ** 2);
+      }
+    }
+  }
   if (Math.abs(dx) < 15) {
     c1.x += offset;
     c2.x += offset;

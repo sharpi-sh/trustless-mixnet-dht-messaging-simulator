@@ -61,10 +61,10 @@ test('keeps stage order and card bounds stable under changing node and path stat
   const layout = layoutTopology(nodes, paths);
   expect(layout.nodes.size).toBe(nodes.length);
   expect(
-    Math.abs(layout.nodes.get('alice')!.y - (layout.height + 24) / 2),
+    Math.abs(layout.nodes.get('alice')!.y - layout.height / 2),
   ).toBeLessThanOrEqual(4);
-  expect(layout.stages.map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-  for (const n of nodes) {
+  expect(layout.stages.map((s) => s.index)).toEqual([1, 2, 3, 4, 5, 6]);
+  for (const n of nodes.filter((n) => n.kind !== 'person')) {
     const p = layout.nodes.get(n.id)!,
       stage = layout.stages.find((s) => s.index === n.stage_index)!;
     expect(p.x - p.w / 2).toBeGreaterThan(stage.x);
@@ -90,6 +90,43 @@ test('keeps stage order and card bounds stable under changing node and path stat
   expect(Array.from(again.nodes.values(), (n) => [n.id, n.x, n.y])).toEqual(
     rects.map((n) => [n.id, n.x, n.y]),
   );
+});
+
+test('anchors participants at the chat edges, centred and stacked, with routed avatar ports', () => {
+  const layout = layoutTopology(
+    [
+      node('alice', 'person', 0),
+      node('carol', 'person', 0),
+      node('west', 'tor', 1),
+      node('east', 'direct', 9),
+      node('bob', 'person', 10),
+    ],
+    [path('alice', 'west'), path('carol', 'west'), path('bob', 'east')],
+    { width: 1024, height: 480 },
+  );
+  const alice = layout.nodes.get('alice')!,
+    carol = layout.nodes.get('carol')!,
+    bob = layout.nodes.get('bob')!;
+  expect(alice.x).toBe(carol.x);
+  expect((alice.y + carol.y) / 2).toBeCloseTo(layout.height / 2, 0);
+  expect(carol.y - alice.y).toBe(72);
+  expect(bob.y).toBeCloseTo(layout.height / 2, 0);
+  expect(alice.x + alice.w / 2).toBeLessThan(layout.stages[0].x);
+  expect(bob.x - bob.w / 2).toBeGreaterThan(
+    layout.stages[1].x + layout.stages[1].width,
+  );
+  const west = layout.nodes.get('west')!;
+  expect([west.w, west.h]).toEqual([34, 24]);
+  for (const offset of [0, 10, -20]) {
+    const start = laneCurve(alice, west, 'forward', offset).start;
+    expect(Math.hypot(start.x - alice.x, start.y - alice.y)).toBeCloseTo(
+      alice.w / 2,
+    );
+    const end = laneCurve(west, alice, 'reply', offset).end;
+    expect(Math.hypot(end.x - alice.x, end.y - alice.y)).toBeCloseTo(
+      alice.w / 2,
+    );
+  }
 });
 
 test('forward and reply use the same nodes with separate cubic paths and bounded marker progress', () => {
