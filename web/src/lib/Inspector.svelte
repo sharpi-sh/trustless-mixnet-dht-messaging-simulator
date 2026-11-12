@@ -22,7 +22,7 @@
   } = $props();
   const components = {
     person:
-      'A simulated handset or computer running the messaging client. It holds the device’s private key, encrypts outgoing text and decrypts incoming messages. The enclosed public key lets the recipient encrypt a reply. Its owner is unverified.',
+      'A simulated handset or computer running the messaging client. It holds the device’s private key, encrypts outgoing text and decrypts incoming messages. The enclosed public key lets the recipient encrypt a reply. Messages carry no sender signature, so the recipient cannot verify who supplied that key.',
     tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
     provider:
       'A simulated server running a Loopix provider. It accepts Sphinx packets from its clients, forwards them to the first mix layer, and holds mailbox handles for periodic collection. At egress it hands the encrypted bundle to the storage gateway.',
