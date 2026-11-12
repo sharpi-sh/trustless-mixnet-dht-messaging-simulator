@@ -192,7 +192,12 @@ test('assigns three different channels to three senders in the same simulation',
   backend,
 }) => {
   await connect(page, backend.url);
-  await page.getByLabel('Senders', { exact: true }).fill('3');
+  const addSender = page.getByRole('button', {
+    name: 'Add another sender',
+    exact: true,
+  });
+  await addSender.click();
+  await addSender.click();
   await page
     .getByLabel('Carol channel', { exact: true })
     .selectOption('shadowsocks');
@@ -222,4 +227,40 @@ test('assigns three different channels to three senders in the same simulation',
       ),
     ).toBe(true);
   }
+});
+
+test('adds and removes participant rows independently and enforces both roster limits', async ({
+  page,
+  backend,
+}) => {
+  await connect(page, backend.url);
+  await expect(
+    page.getByRole('spinbutton', { name: /^(Senders|Receivers)$/ }),
+  ).toHaveCount(0);
+  const channel = (name: string) =>
+    page.getByLabel(name + ' channel', { exact: true });
+  const remove = (name: string) =>
+    page.getByRole('button', { name: 'Remove ' + name, exact: true });
+  const add = (role: string) =>
+    page.getByRole('button', { name: 'Add another ' + role, exact: true });
+  await channel('Alice').selectOption('direct');
+  await add('sender').click();
+  await channel('Carol').selectOption('shadowsocks');
+  await add('recipient').click();
+  await channel('Lena').selectOption('shadowsocks');
+  await remove('Carol').click();
+  await expect(channel('Carol')).toHaveCount(0);
+  await expect(channel('Lena')).toHaveValue('shadowsocks');
+  await add('sender').click();
+  await expect(channel('Carol')).toHaveValue('tor');
+  await expect(channel('Alice')).toHaveValue('direct');
+  for (const role of ['sender', 'recipient']) {
+    for (let count = 2; count < 10; count++) await add(role).click();
+    await expect(add(role)).toBeDisabled();
+  }
+  await expect(channel('Kai')).toBeVisible();
+  await expect(channel('Tess')).toBeVisible();
+  await remove('Tess').click();
+  await expect(add('recipient')).toBeEnabled();
+  await expect(add('sender')).toBeDisabled();
 });
