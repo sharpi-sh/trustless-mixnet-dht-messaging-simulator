@@ -63,3 +63,44 @@ def test_tampered_body_wrong_creator_and_fresh_network_cannot_open_reply():
 def test_malformed_serialised_block_is_rejected(invalid):
     with pytest.raises(SphinxException, match="Malformed"):
         ReplyBlock.from_bytes(invalid)
+
+
+def test_reply_header_rejects_invalid_point_fields_and_noncanonical_encoding():
+    network = SphinxNetwork(ROUTE)
+    block, _ = network.create_surb(ROUTE, [0, 0, 0])
+    point, routing, mac = decode(block.header)
+    for bad_header in (
+        encode(([], routing, mac)),
+        encode((point, routing[:-1], mac)),
+        encode((point, routing[1:], mac + b"x")),
+        b"\xff" * len(block.header),
+    ):
+        with pytest.raises(SphinxException, match="Malformed"):
+            ReplyBlock.from_bytes(encode((ROUTE[0], bad_header, block.payload_key)))
+    for bad_wire in (
+        b"",
+        block.to_bytes() + b"extra",
+        bytes(2000),
+        encode(("", block.header, block.payload_key)),
+    ):
+        with pytest.raises(SphinxException, match="Malformed"):
+            ReplyBlock.from_bytes(bad_wire)
+
+
+def test_ill_framed_body_and_authenticated_invalid_padding_do_not_accept_empty_reply():
+    from app.sphinx import PARAMS
+
+    net = SphinxNetwork(["mix"])
+    block, secret = net.create_surb(["mix"], [])
+    for body in (None, b"", bytes(PARAMS.m - 1)):
+        with pytest.raises(SphinxException, match="length"):
+            secret.open(secret.reply_id, body)
+    # A block holder could craft a correctly MACed body with no end marker.
+    padded = bytes(PARAMS.m - PARAMS.k)
+    encrypted = PARAMS.pi(block.payload_key, PARAMS.mu(block.payload_key, padded) + padded)
+    hop = net.peel("mix", encode((decode(block.header), encrypted)))
+    with pytest.raises(SphinxException, match="padding"):
+        secret.open(hop.reply_id, hop.payload)
+    fresh, fresh_secret = net.create_surb(["mix"], [])
+    valid = net.peel("mix", net.use_surb(fresh, b""))
+    assert fresh_secret.open(valid.reply_id, valid.payload) == b""

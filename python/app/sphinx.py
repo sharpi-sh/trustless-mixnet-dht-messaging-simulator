@@ -19,7 +19,6 @@ from .sphinx_ref.client import (
     create_header,
     pad_body,
     receive_forward,
-    unpad_body,
 )
 from .sphinx_ref.node import sphinx_process
 from .sphinx_ref.params import SphinxParams
@@ -28,6 +27,8 @@ from .sphinx_ref.wire import SphinxException, decode, encode
 PARAMS = SphinxParams(header_len=1024, body_len=1024)
 WIRE_BYTES = 2079
 MAX_REPLY_BYTES = PARAMS.m - PARAMS.k - 1
+# One MessagePack array byte and three binary body-prefix bytes surround the header.
+_HEADER_BYTES = WIRE_BYTES - PARAMS.m - 4
 _SURB_FLAG = b"\xf2"
 
 
@@ -39,27 +40,38 @@ class ReplyBlock:
     header: bytes = field(repr=False)
     payload_key: bytes = field(repr=False)
 
-    def to_bytes(self) -> bytes:
-        return encode((self.first_node, self.header, self.payload_key))
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> ReplyBlock:
+    def __post_init__(self) -> None:
         try:
-            first_node, header, key = decode(data)
-            if not isinstance(first_node, str) or not first_node:
+            if not isinstance(self.first_node, str) or not 1 <= len(self.first_node.encode()) <= 127:
                 raise ValueError("Invalid first hop")
-            if not isinstance(key, bytes) or len(key) != PARAMS.k or not isinstance(header, bytes):
-                raise ValueError("Invalid key or header")
-            point, routing, mac = decode(header)
+            if not isinstance(self.payload_key, bytes) or len(self.payload_key) != PARAMS.k:
+                raise ValueError("Invalid payload key")
+            if not isinstance(self.header, bytes) or len(self.header) != _HEADER_BYTES:
+                raise ValueError("Invalid header length")
+            point, routing, mac = decode(self.header)
             if (
                 not PARAMS.group.in_group(point)
                 or not isinstance(routing, bytes)
                 or len(routing) != PARAMS.max_len - 32
                 or not isinstance(mac, bytes)
                 or len(mac) != PARAMS.k
+                or self.header != encode((point, routing, mac))
             ):
                 raise ValueError("Invalid reply header")
-            return cls(first_node, encode((point, routing, mac)), key)
+        except (ValueError, TypeError, IndexError, KeyError) as exc:
+            raise SphinxException("Malformed reply block") from exc
+
+    def to_bytes(self) -> bytes:
+        return encode((self.first_node, self.header, self.payload_key))
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> ReplyBlock:
+        try:
+            # The first-hop identifier is bounded by one signed routing length byte.
+            if not isinstance(data, bytes) or len(data) > _HEADER_BYTES + 127 + PARAMS.k + 8:
+                raise ValueError("Invalid serialised block size")
+            first_node, header, key = decode(data)
+            return cls(first_node, header, key)
         except (ValueError, TypeError, IndexError, KeyError) as exc:
             raise SphinxException("Malformed reply block") from exc
 
@@ -72,8 +84,10 @@ class ReplySecret:
     _keys: tuple[bytes, ...]
 
     def open(self, reply_id: bytes | None, body: bytes) -> bytes:
-        if reply_id != self.reply_id or not self._keys:
+        if not isinstance(reply_id, bytes) or reply_id != self.reply_id or not self._keys:
             raise SphinxException("Unknown or spent reply secret")
+        if not isinstance(body, bytes) or len(body) != PARAMS.m:
+            raise SphinxException("Invalid reply body length")
         # Each mix removed a LIONESS layer. Undo these transforms in reverse order.
         for key in reversed(self._keys[1:]):
             body = PARAMS.pi(key, body)
@@ -82,8 +96,11 @@ class ReplySecret:
         mac, padded = clear[: PARAMS.k], clear[PARAMS.k :]
         if not compare_digest(mac, PARAMS.mu(key, padded)):
             raise SphinxException("Modified reply body")
+        unpadded = padded.rstrip(b"\xff")
+        if not unpadded.endswith(b"\x7f"):
+            raise SphinxException("Invalid reply padding")
         self._keys = ()
-        return unpad_body(padded)
+        return unpadded[:-1]
 
 
 @dataclass(frozen=True, slots=True)
