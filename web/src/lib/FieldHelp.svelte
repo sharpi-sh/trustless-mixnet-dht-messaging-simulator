@@ -57,7 +57,7 @@
     pointer-events: none;
   }
   .help:hover .tip,
-  .help:focus-visible .tip {
+  .help:focus .tip {
     opacity: 1;
     visibility: visible;
   }

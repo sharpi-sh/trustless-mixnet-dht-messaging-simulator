@@ -11,6 +11,22 @@ test('shows roster portraits and divides setup into equal desktop columns that s
     name: 'Conversations',
     exact: true,
   });
+  await expect(
+    network.getByRole('button', { name: 'Information about Alice channel' }),
+  ).toBeVisible();
+  const seedHelp = page.getByRole('button', {
+    name: 'Information about Random seed',
+  });
+  await seedHelp.focus();
+  await expect(
+    page.getByRole('tooltip').filter({
+      hasText: 'makes the same setup produce the same simulated decisions',
+    }),
+  ).toBeVisible();
+  await page.getByText('Advanced settings', { exact: true }).click();
+  await expect(
+    page.getByLabel('Polling interval (ms)', { exact: true }),
+  ).toHaveValue('2000');
   await network.getByRole('button', { name: 'Add another sender' }).click();
   for (const id of ['sender-1', 'sender-2', 'receiver-1']) {
     const img = network.locator(`img[src="/avatars/${id}.jpg"]`);
