@@ -4,6 +4,10 @@ Each Kademlia peer has a random 160-bit identifier, local routing buckets and a 
 
 The DHT uses integer XOR distance, a bucket capacity of 20 and three concurrent discovery requests. Each joining peer begins with one bootstrap contact. The logical clock drives timeout, refresh, expiry and republishing. For a small demonstration network, the closest set can contain fewer than 20 responsive nodes.
 
+A joining peer learns one bootstrap address out of band. It performs a lookup of its own ID and refreshes eligible buckets. If the joining peer starts offline it joins on recovery. A peer whose bootstrap fails to answer retries over the simulated paths with a capped backoff. The RPC timeout allows for a request and response at the configured path delay and jitter. The inspector exposes the active timeout.
+
+A publisher renews its original record daily. Ordinary replicas redistribute hourly and expire relative to the original publication. When a lookup finds a value, the nearest queried peer that missed can receive a cached copy. The paper specifies exponential expiry by distance rank and leaves the base open. This implementation halves the cache lifetime for each closer contact, subject to the original record’s expiry.
+
 The application publishes an encrypted manifest under an opaque lookup key. Vault nodes separately store replicas of encrypted chunks and expose hashes, lengths and placement results. A reader needs one verified copy of every chunk. It checks the reconstructed ciphertext hash before device decryption. Replication and Kademlia record replication are independent.
 
 The simulator can display the entire path for instructional inspection. Individual protocol actors retain their own observations. Sizes, lookup-key reuse, addresses, timing and placement remain observable within the stated boundaries. The simulator does not establish resistance to correlation.
