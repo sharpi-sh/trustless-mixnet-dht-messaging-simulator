@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { channelNames } from './channels';
   import { untrack } from 'svelte';
   import type { Config } from './types';
   import {
@@ -23,6 +24,10 @@
     busy: boolean;
   } = $props();
   let cfg = $state<Config>(untrack(() => JSON.parse(JSON.stringify(defaults))));
+  const channelFields = [
+    ['sender_channel', 'Sender channel'],
+    ['recipient_channel', 'Recipient channel'],
+  ] as const;
   let submitting = $state(false);
   let error = $state('');
   let receivers = $derived(
@@ -100,6 +105,20 @@
             bind:value={cfg.receiver_count}
           /></label
         >
+        {#each channelFields as [key, label]}
+          <label
+            >{label}
+            {#if cfg[key]}
+              <select aria-label={label} bind:value={cfg[key]}>
+                {#each Object.entries(channelNames) as [value, name]}<option
+                    {value}>{name}</option
+                  >{/each}
+              </select>
+            {:else}<select aria-label={label} disabled
+                ><option>Tor</option></select
+              >{/if}
+          </label>
+        {/each}
         <label
           >{cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}<input
             type="number"

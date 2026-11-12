@@ -13,6 +13,9 @@
     extractRoute,
     transitEndpoints,
   } from './graph-layout';
+  import { channelNames, isChannel } from './channels';
+  import IPObservation from './IPObservation.svelte';
+  import PathAddresses from './PathAddresses.svelte';
   import GraphGlyph from './GraphGlyph.svelte';
   import ConversationColumn from './ConversationColumn.svelte';
   import { lastActivity, logicalStamp } from './conversation';
@@ -139,6 +142,10 @@
   let pickedTrack = $derived(
     selectedLeg ? messageTrackMap.get(trackId(selectedLeg)) : undefined,
   );
+  function choosePath(id: string) {
+    pick = null;
+    onPath(id);
+  }
   function chooseLeg(leg: MessageLeg) {
     pick = { epoch, id: leg.id };
     onPath(leg.pathId);
@@ -525,8 +532,8 @@
             class={'edge ' + e.state}
             class:substrate={e.substrate}
             class:context={!showAll && !e.known && e.p.id !== selectedPath}
-            onclick={() => onPath(e.p.id)}
-            onkeydown={(ev) => handleKey(ev, () => onPath(e.p.id))}
+            onclick={() => choosePath(e.p.id)}
+            onkeydown={(ev) => handleKey(ev, () => choosePath(e.p.id))}
           >
             <title
               >{e.p.source_id} ↔ {e.p.target_id} · {caption(e.p)} · {e.known
@@ -664,26 +671,32 @@
               <text class="device-title" x={-g.w / 2 + 32} y={-g.h / 2 + 22}
                 >{device.label}</text
               >
+              <text
+                class="device-ip"
+                data-device-ip={n.simulated_address}
+                x={-g.w / 2 + 9}
+                y={-g.h / 2 + 39}>{n.simulated_address}</text
+              >
               {@const activityTimes = lastActivity(device.logs)}
-              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 43}
+              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 57}
                 >Last sent</text
               >
               <text
                 class="device-time"
                 x={g.w / 2 - 9}
-                y={-g.h / 2 + 43}
+                y={-g.h / 2 + 57}
                 data-last-sent={activityTimes.sent ?? ''}
                 >{activityTimes.sent === null
                   ? '—'
                   : logicalStamp(activityTimes.sent)}</text
               >
-              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 63}
+              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 74}
                 >Last received</text
               >
               <text
                 class="device-time"
                 x={g.w / 2 - 9}
-                y={-g.h / 2 + 63}
+                y={-g.h / 2 + 74}
                 data-last-received={activityTimes.received ?? ''}
                 >{activityTimes.received === null
                   ? '—'
@@ -694,8 +707,10 @@
                 ><GraphGlyph kind={n.kind} /></g
               >
               <text class="node-label" text-anchor="middle" y="14"
-                >{n.kind === 'tor'
-                  ? 'Tor'
+                >{isChannel(n.kind)
+                  ? n.kind === 'direct'
+                    ? 'Direct'
+                    : channelNames[n.kind]
                   : n.kind === 'provider'
                     ? n.label.replace(' provider', '')
                     : n.label}</text
@@ -814,7 +829,7 @@
     <span>↑ Outgoing · ↓ Incoming</span>
     <span class="lane">↗ Forward <span>·</span> ↙ Reply</span>
   </div>
-  {#if selectedLeg && pickedTrack}
+  {#if selectedLeg && selectedLeg.pathId === selectedPath && pickedTrack}
     <section
       class="leg-readout"
       aria-label="Recorded message transit"
@@ -829,6 +844,19 @@
           >×</button
         >
       </div>
+      {#if selectedLeg.ipHop}
+        <IPObservation
+          hop={selectedLeg.ipHop}
+          observation={selectedLeg.event.payload.ip_observation ?? null}
+          proxyEgress={[
+            liveNodes.get(selectedLeg.source),
+            liveNodes.get(selectedLeg.target),
+          ].find((n) => n?.kind === 'shadowsocks')?.egress_address}
+          heading="Recorded IP visibility"
+        />
+      {:else}<p>
+          The backend did not record IP visibility for this transit.
+        </p>{/if}
       {#if pickedTrack.legs.length > 1}
         <label
           >Traversal <select
@@ -879,6 +907,10 @@
           <dd>No recorded description</dd>{/each}
       </dl>
     </section>
+  {:else if expanded && highlight}
+    <div class="screen-addresses">
+      <PathAddresses path={highlight} nodes={lab.topology.nodes} />
+    </div>
   {/if}
   {#if highlight}<p class="selected-transport">
       {highlight.source_id} ↔ {highlight.target_id} <span>·</span>
@@ -1068,7 +1100,9 @@
   .band.person rect {
     fill: #f1f2ed;
   }
-  .band.tor rect {
+  .band.tor rect,
+  .band.shadowsocks rect,
+  .band.direct rect {
     fill: #f4f1eb;
   }
   .band.mix rect {
@@ -1245,6 +1279,9 @@
     stroke: white;
     stroke-width: 1.2;
   }
+  .screen-addresses {
+    padding: 0 1rem;
+  }
   .leg-readout {
     margin: 8px 16px 14px;
     border-left: 3px solid var(--message-colour);
@@ -1331,6 +1368,10 @@
       650 14px system-ui,
       sans-serif;
     fill: #283e30;
+  }
+  .device-ip {
+    font: 10px var(--mono, monospace);
+    fill: #344b40;
   }
   .device-sub {
     font:

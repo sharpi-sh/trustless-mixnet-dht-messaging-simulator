@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { channelNames } from '../lib/channels';
   import { LabClient } from '../lib/api';
   import Configuration from '../lib/Configuration.svelte';
   import MessageEditor from '../lib/MessageEditor.svelte';
@@ -19,6 +20,8 @@
   let lastId = $state('');
   let uiError = $state('');
   let lab = $derived($store.snapshot);
+  let senderChannel = $derived(lab?.config.sender_channel ?? 'tor');
+  let recipientChannel = $derived(lab?.config.recipient_channel ?? 'tor');
   let pending = $derived($store.pending > 0);
   let connected = $derived($store.connection === 'connected');
 
@@ -317,8 +320,11 @@ npm run dev</code
       </div>
       {#if lab.first_message_hop_sequence === null}
         <p id="first-message-help" class="startup-hint">
-          Run follows the message from its first hop to Tor. Choose Step to
-          first message hop to pause at departure.
+          Run follows the message from its first hop to {senderChannel ===
+          'direct'
+            ? 'the provider'
+            : channelNames[senderChannel]}. Choose Step to first message hop to
+          pause at departure.
           {#if lab.status === 'paused' && $store.events.at(-1)?.event_type === 'first_message_hop_step_finished'}
             The step limit was reached. Use the control again to continue.
           {/if}
@@ -356,7 +362,15 @@ npm run dev</code
   {/if}
   <footer>
     <span>Local simulation</span><span
-      >Tor abstraction · Loopix 2017 · Kademlia 2002 · Replicated chunk storage</span
+      >{lab
+        ? [
+            ...new Set([
+              channelNames[senderChannel],
+              channelNames[recipientChannel],
+            ]),
+          ].join(' / ')
+        : 'Participant connections'} · Loopix 2017 · Kademlia 2002 · Replicated chunk
+      storage</span
     >
   </footer>
 </main>

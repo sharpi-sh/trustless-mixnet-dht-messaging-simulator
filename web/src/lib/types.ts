@@ -1,5 +1,6 @@
 export type Json =
   string | number | boolean | null | Json[] | { [key: string]: Json };
+export type Channel = 'tor' | 'shadowsocks' | 'direct';
 export type Direction = 'forward' | 'reply';
 export type Status =
   'ready' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
@@ -10,6 +11,8 @@ export interface Outage {
   duration_ms: number;
 }
 export interface Config {
+  sender_channel?: Channel;
+  recipient_channel?: Channel;
   sender_count: number;
   receiver_count: number;
   min_nodes: number;
@@ -62,10 +65,11 @@ export interface Observation {
 export interface LabNode {
   id: string;
   label: string;
-  kind: 'person' | 'tor' | 'provider' | 'mix' | 'dht' | 'storage';
+  kind: 'person' | Channel | 'provider' | 'mix' | 'dht' | 'storage';
   stage_index: number;
   stage: string;
   simulated_address: string;
+  egress_address?: string | null;
   operator_id: string;
   online: boolean;
   history: [number, boolean][];
@@ -82,7 +86,17 @@ export interface ActiveTransit {
   lane: Direction;
   token: string;
 }
+export interface IPHop {
+  source_ip: string;
+  destination_ip: string;
+  observed_source_ip: string;
+  observer: string;
+  description: string;
+  local: boolean;
+}
 export interface Path {
+  ip_hops?: Record<string, IPHop>;
+  local?: boolean;
   id: string;
   source_id: string;
   target_id: string;
@@ -115,6 +129,8 @@ export interface Device {
   label: string;
   role: 'sender' | 'receiver';
   tor_id: string;
+  channel?: Channel;
+  channel_id?: string;
   fingerprint: string;
   signing_fingerprint?: string | null;
   polling_enabled: boolean;

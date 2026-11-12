@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { channelNames, isChannel } from './channels';
+  import PathAddresses from './PathAddresses.svelte';
   import SignatureReceipt from './SignatureReceipt.svelte';
   import type { Snapshot, NodeDetails, LabEvent, Json } from './types';
   import { display, time, fields, rows, peerPath, relevant } from './inspector';
@@ -25,6 +27,10 @@
     person:
       'A simulated handset or computer running the messaging client. It encrypts outgoing messages and decrypts received messages. The enclosed public key lets the recipient encrypt a reply.',
     tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
+    shadowsocks:
+      'A simulated Outline Shadowsocks proxy. It sees the device IP on its incoming connection. The next server sees the proxy’s outgoing IP.',
+    direct:
+      'The device connects directly to the next server. Its outgoing connection uses its own IP address.',
     provider:
       'A simulated server running a Loopix provider. It accepts Sphinx packets from its clients, forwards them to the first mix layer, and holds mailbox handles for periodic collection. At egress it hands the encrypted bundle to the storage gateway.',
     mix: 'A simulated relay server running a Loopix mix. It checks the packet and replay tag, removes one Sphinx layer, waits for the encoded delay and forwards to the encoded next hop.',
@@ -404,8 +410,9 @@
             {:else}<p class="empty">
                 No fragments placed at this vault.
               </p>{/each}
-          {:else if node.kind === 'tor'}
+          {:else if isChannel(node.kind)}
             <dl class="facts">
+              {@render datum('Egress IP', node.egress_address, true)}
               {@render datum('Entries', protocolState.entries)}{@render datum(
                 'Exits',
                 protocolState.exits,
@@ -431,9 +438,11 @@
               )}{@render datum('Polling enabled', device.polling_enabled)}
             </dl>
             <p>
-              Tor boundary <button
+              {channelNames[device.channel ?? 'tor']}
+              <button
                 class="link"
-                onclick={() => onNode(device.tor_id)}>{device.tor_id}</button
+                onclick={() => onNode(device.channel_id ?? device.tor_id)}
+                >{device.channel_id ?? device.tor_id}</button
               >
             </p>
             <h3>Device log</h3>
@@ -544,6 +553,7 @@
         path.dropped,
       )}
     </dl>
+    <PathAddresses {path} nodes={lab.topology.nodes} />
     <h3>Active transits</h3>
     {#each Object.entries(path.active) as [id, t] (id)}<p class="line">
         <b>{t.source} → {t.target}</b><small

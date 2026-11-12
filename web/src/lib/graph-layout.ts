@@ -8,7 +8,9 @@ import {
   path as d3path,
   type SimulationNodeDatum,
 } from 'd3';
+import { recordedIPHop } from './channels';
 import type {
+  IPHop,
   ActiveTransit,
   Direction,
   LabEvent,
@@ -46,6 +48,7 @@ type Point = { x: number; y: number };
 function metrics(kind: LabNode['kind']) {
   if (kind === 'person') return { w: 146, h: 88 };
   if (kind === 'storage' || kind === 'dht') return { w: 60, h: 44 };
+  if (kind === 'shadowsocks') return { w: 133, h: 48 };
   if (kind === 'mix') return { w: 55, h: 44 };
   return { w: 68, h: 48 };
 }
@@ -402,6 +405,7 @@ export interface MessageLeg {
   status: 'active' | 'completed' | 'failed';
   reason: string | null;
   cargo: Record<string, Json>;
+  ipHop: IPHop | null;
   event: LabEvent;
 }
 interface MessageTrack {
@@ -445,6 +449,7 @@ function messageTrafficHistory() {
       if (status !== 'active') {
         legs.set(existing.id, {
           ...existing,
+          ipHop: existing.ipHop ?? recordedIPHop(p.ip_hop),
           status,
           endMs: event.simulation_time_ms,
           event,
@@ -462,6 +467,7 @@ function messageTrafficHistory() {
       target: event.target_id,
       lane,
       status,
+      ipHop: recordedIPHop(p.ip_hop),
       cargo:
         p.cargo && typeof p.cargo === 'object' && !Array.isArray(p.cargo)
           ? p.cargo

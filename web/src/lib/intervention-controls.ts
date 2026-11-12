@@ -1,8 +1,11 @@
 import type { CommandArgs, CommandType, Path } from './types';
 
-export function boundaryStates(paths: Pick<Path, 'boundary' | 'blocked'>[]) {
+export function boundaryStates(
+  paths: Pick<Path, 'boundary' | 'blocked' | 'local'>[],
+) {
   const summary = new Map<string, { total: number; blocked: number }>();
   for (const path of paths) {
+    if (path.local) continue;
     const state = summary.get(path.boundary) ?? { total: 0, blocked: 0 };
     state.total += 1;
     state.blocked += Number(path.blocked);
