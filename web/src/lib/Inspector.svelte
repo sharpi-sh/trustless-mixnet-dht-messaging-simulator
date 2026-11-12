@@ -28,7 +28,7 @@
     !node ? lab.topology.paths.find((p) => p.id === selectedPath) : undefined,
   );
   let info = $derived(node && details?.node.id === node.id ? details : null);
-  let state = $derived(info?.state ?? {});
+  let protocolState = $derived(info?.state ?? {});
   let device = $derived(lab.devices.find((d) => d.id === node?.id));
   let connected = $derived(
     node
@@ -188,11 +188,11 @@
             <dl class="facts">
               {@render datum(
                 'Mix delay rate (s⁻¹)',
-                state.mu_per_second,
-              )}{@render datum('Sphinx replay tags', state.replay_tags)}
-              {#if node.kind === 'provider' && state.queued_cells !== undefined}{@render datum(
+                protocolState.mu_per_second,
+              )}{@render datum('Sphinx replay tags', protocolState.replay_tags)}
+              {#if node.kind === 'provider' && protocolState.queued_cells !== undefined}{@render datum(
                   'Queued cells',
-                  state.queued_cells,
+                  protocolState.queued_cells,
                 )}{/if}
             </dl>
             {#if node.kind === 'mix'}
@@ -207,7 +207,7 @@
                       ><th>Failures / successes</th><th>Last failure</th></tr
                     ></thead
                   ><tbody>
-                    {#each rows(state.adjacent_peers) as a (a.peer_id)}
+                    {#each rows(protocolState.adjacent_peers) as a (a.peer_id)}
                       <tr
                         ><td
                           ><button
@@ -226,7 +226,7 @@
                 </table>
               </div>
               <h3>Delayed packets</h3>
-              {#each Object.entries(fields(state.delayed_packets)) as [packet, until] (packet)}<p
+              {#each Object.entries(fields(protocolState.delayed_packets)) as [packet, until] (packet)}<p
                   class="line"
                 >
                   <code>{packet}</code> releases at {time(until)}
@@ -238,16 +238,16 @@
             <dl class="facts">
               {@render datum(
                 '160-bit node ID',
-                state.node_id,
+                protocolState.node_id,
                 true,
-              )}{@render datum('Bucket size k', state.k)}{@render datum(
+              )}{@render datum('Bucket size k', protocolState.k)}{@render datum(
                 'Lookup concurrency α',
-                state.alpha,
+                protocolState.alpha,
               )}
             </dl>
             <h3>Routing buckets</h3>
-            {#each rows(state.buckets) as bucket, i (bucket.range_start)}
-              <details open={rows(state.buckets).length === 1}>
+            {#each rows(protocolState.buckets) as bucket, i (bucket.range_start)}
+              <details open={rows(protocolState.buckets).length === 1}>
                 <summary
                   >Bucket {i + 1} · {rows(bucket.contacts).length} contacts</summary
                 >
@@ -293,7 +293,7 @@
               </details>
             {/each}
             <h3>Active lookups</h3>
-            {#each rows(state.active_lookups) as lookup (lookup.op_id)}
+            {#each rows(protocolState.active_lookups) as lookup (lookup.op_id)}
               <p class="line"><b>{lookup.purpose}</b> · {lookup.op_id}</p>
               <p class="mono">{lookup.key}</p>
               <div class="scroll">
@@ -322,21 +322,25 @@
                 </table>
               </div>
             {:else}<p class="empty">No lookups in progress.</p>{/each}
-            {#if Array.isArray(state.record_ids) && state.record_ids.length}<h3>
+            {#if Array.isArray(protocolState.record_ids) && protocolState.record_ids.length}<h3
+              >
                 Stored records
               </h3>
-              {#each state.record_ids as id (id)}<p class="mono">
+              {#each protocolState.record_ids as id (id)}<p class="mono">
                   {id}
                 </p>{/each}{/if}
           {:else if node.kind === 'storage'}
             <dl class="facts">
-              {@render datum('Used bytes', state.used_bytes)}{@render datum(
+              {@render datum(
+                'Used bytes',
+                protocolState.used_bytes,
+              )}{@render datum(
                 'Capacity (bytes)',
-                state.capacity_bytes,
+                protocolState.capacity_bytes,
               )}
             </dl>
             <h3>Fragment placements</h3>
-            {#each rows(state.fragments) as f (f.id)}
+            {#each rows(protocolState.fragments) as f (f.id)}
               <details>
                 <summary
                   >Fragment {f.index} · {f.placement} · {f.size} bytes</summary
@@ -363,16 +367,16 @@
               </p>{/each}
           {:else if node.kind === 'tor'}
             <dl class="facts">
-              {@render datum('Entries', state.entries)}{@render datum(
+              {@render datum('Entries', protocolState.entries)}{@render datum(
                 'Exits',
-                state.exits,
+                protocolState.exits,
               )}
             </dl>
             <p>
               Owner <button
                 class="link"
-                onclick={() => onNode(String(state.owner))}
-                >{state.owner}</button
+                onclick={() => onNode(String(protocolState.owner))}
+                >{protocolState.owner}</button
               >
             </p>
           {:else if device}
@@ -412,12 +416,12 @@
               'Outbound transits',
               transits.filter((t) => t.source === node?.id).length,
             )}
-            {#if state.inbound_queue !== undefined}{@render datum(
+            {#if protocolState.inbound_queue !== undefined}{@render datum(
                 'Inbound queue',
-                state.inbound_queue,
-              )}{/if}{#if state.outbound_queue !== undefined}{@render datum(
+                protocolState.inbound_queue,
+              )}{/if}{#if protocolState.outbound_queue !== undefined}{@render datum(
                 'Outbound queue',
-                state.outbound_queue,
+                protocolState.outbound_queue,
               )}{/if}
           </dl>
           {#each transits as t (t.id)}<p>
