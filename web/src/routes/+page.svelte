@@ -23,7 +23,11 @@
   let connected = $derived($store.connection === 'connected');
 
   onMount(() => {
-    endpoint = localStorage.getItem('lab-endpoint') ?? '';
+    const port = new URLSearchParams(location.search).get('port');
+    endpoint =
+      port && /^\d+$/.test(port) && +port > 0 && +port <= 65535
+        ? port
+        : (localStorage.getItem('lab-endpoint') ?? '');
     mounted = true;
     return () => client.disconnect();
   });
