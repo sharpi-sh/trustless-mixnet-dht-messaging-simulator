@@ -8,7 +8,7 @@ def test_exported_retrieval_transits_show_only_safe_cargo_and_physical_hops():
     for _ in range(50000):
         if lab.status != "running":
             break
-        lab.step()
+        lab.advance()
     assert lab.outcomes == {"msg-1": "received", "msg-2": "received"}
     phases = {}
     for event in lab.events:
