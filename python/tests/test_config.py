@@ -29,4 +29,9 @@ def test_invalid(changes):
 
 def test_default_timing_dimensions():
     config = Config()
-    assert (config.step_delay_ms, config.base_transit_delay_ms, config.mu_per_second) == (500, 250, 1)
+    assert (
+        config.step_delay_ms,
+        config.base_transit_delay_ms,
+        config.mu_per_second,
+        config.polling_interval_ms,
+    ) == (500, 250, 1, 2000)

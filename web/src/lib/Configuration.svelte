@@ -1,11 +1,13 @@
 <script lang="ts">
   import { avatarUrl } from './avatars';
   import { channelNames } from './channels';
+  import FieldHelp from './FieldHelp.svelte';
   import { untrack } from 'svelte';
   import type { Channel, Config } from './types';
   import {
     configurationError,
     conversationCount,
+    fieldHelp,
     loopixFields,
     outageFields,
     pollingFields,
@@ -55,11 +57,16 @@
   }
 </script>
 
+{#snippet info(label: string, key: string, uid: string)}
+  {label}<FieldHelp {label} text={fieldHelp[key]} {uid} />
+{/snippet}
+
 {#snippet numbers(fields: NumericField[])}
   <div class="fields">
     {#each fields as [key, label, min, max, rule] (key)}
       <label
-        >{label}<input
+        >{@render info(label, key, key)}<input
+          aria-label={label}
           type="number"
           {min}
           {max}
@@ -99,22 +106,29 @@
                 />{name}</span
               >
               {#if cfg.participant_channels}
-                <select
-                  aria-label={name + ' channel'}
-                  value={cfg.participant_channels[id] ??
-                    cfg[channelKey] ??
-                    'tor'}
-                  onchange={(event) => {
-                    cfg.participant_channels = {
-                      ...cfg.participant_channels,
-                      [id]: event.currentTarget.value as Channel,
-                    };
-                  }}
-                >
-                  {#each Object.entries(channelNames) as [value, label] (value)}
-                    <option {value}>{label}</option>
-                  {/each}
-                </select>
+                <span class="channel-field">
+                  <FieldHelp
+                    label={name + ' channel'}
+                    text={fieldHelp.participant_channel}
+                    uid={'channel-' + id}
+                  />
+                  <select
+                    aria-label={name + ' channel'}
+                    value={cfg.participant_channels[id] ??
+                      cfg[channelKey] ??
+                      'tor'}
+                    onchange={(event) => {
+                      cfg.participant_channels = {
+                        ...cfg.participant_channels,
+                        [id]: event.currentTarget.value as Channel,
+                      };
+                    }}
+                  >
+                    {#each Object.entries(channelNames) as [value, label] (value)}
+                      <option {value}>{label}</option>
+                    {/each}
+                  </select>
+                </span>
               {/if}
               {#if index > 0 && index === ids.length - 1}
                 <button
@@ -133,9 +147,16 @@
           {/each}
           {#if !cfg.participant_channels}
             <label>
-              {isSender ? 'Sender channel' : 'Recipient channel'}
+              {@render info(
+                isSender ? 'Sender channel' : 'Recipient channel',
+                'participant_channel',
+                role + '-channel',
+              )}
               {#if cfg[channelKey]}
-                <select bind:value={cfg[channelKey]}>
+                <select
+                  aria-label={isSender ? 'Sender channel' : 'Recipient channel'}
+                  bind:value={cfg[channelKey]}
+                >
                   {#each Object.entries(channelNames) as [value, label] (value)}
                     <option {value}>{label}</option>
                   {/each}
@@ -153,7 +174,12 @@
       {/each}
       <div class="fields">
         <label
-          >{cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}<input
+          >{@render info(
+            cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes',
+            'min_nodes',
+            'min_nodes',
+          )}<input
+            aria-label={cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}
             type="number"
             min="6"
             max="20"
@@ -163,7 +189,8 @@
           /></label
         >
         {#if cfg.randomise_count}<label
-            >Maximum mix nodes<input
+            >{@render info('Maximum mix nodes', 'max_nodes', 'max_nodes')}<input
+              aria-label="Maximum mix nodes"
               type="number"
               min="6"
               max="20"
@@ -174,8 +201,17 @@
           >{/if}
       </div>
       <label class="tick"
-        ><input type="checkbox" bind:checked={cfg.randomise_count} />Randomise
-        mix node count</label
+        ><input
+          type="checkbox"
+          aria-label="Randomise mix node count"
+          bind:checked={cfg.randomise_count}
+        /><span
+          >{@render info(
+            'Randomise mix node count',
+            'randomise_count',
+            'randomise_count',
+          )}</span
+        ></label
       >
     </section>
     <div class="settings">
@@ -183,7 +219,14 @@
         <h2>Conversations</h2>
         <div class="fields">
           <label
-            >Pairing strategy<select bind:value={cfg.pairing_strategy}>
+            >{@render info(
+              'Pairing strategy',
+              'pairing_strategy',
+              'pairing_strategy',
+            )}<select
+              aria-label="Pairing strategy"
+              bind:value={cfg.pairing_strategy}
+            >
               <option value="all_to_one">All senders to one receiver</option
               ><option value="one_to_all">One sender to all receivers</option>
               <option value="one_to_one_pairs">One-to-one pairs</option><option
@@ -193,7 +236,12 @@
           >
           {#if cfg.pairing_strategy === 'random_pairs'}
             <label
-              >Random pair count<input
+              >{@render info(
+                'Random pair count',
+                'pair_count',
+                'pair_count',
+              )}<input
+                aria-label="Random pair count"
                 type="number"
                 min="1"
                 max={cfg.sender_count * cfg.receiver_count}
@@ -204,7 +252,12 @@
             >
           {/if}
           <label
-            >Exchanges per conversation<input
+            >{@render info(
+              'Exchanges per conversation',
+              'exchanges',
+              'exchanges',
+            )}<input
+              aria-label="Exchanges per conversation"
               type="number"
               min="1"
               max="10"
@@ -224,7 +277,8 @@
         <h2>Run settings</h2>
         <div class="fields">
           <label
-            >Random seed<input
+            >{@render info('Random seed', 'random_seed', 'random_seed')}<input
+              aria-label="Random seed"
               type="number"
               min="0"
               max={Number.MAX_SAFE_INTEGER}
@@ -234,7 +288,12 @@
             /></label
           >
           <label
-            >Playback delay (ms)<input
+            >{@render info(
+              'Playback delay (ms)',
+              'step_delay_ms',
+              'step_delay_ms',
+            )}<input
+              aria-label="Playback delay (ms)"
               type="number"
               min="0"
               max="2000"
@@ -243,7 +302,10 @@
             /></label
           >
           <label
-            >Node availability<select bind:value={cfg.pattern}>
+            >{@render info('Node availability', 'pattern', 'pattern')}<select
+              aria-label="Node availability"
+              bind:value={cfg.pattern}
+            >
               <option value="always_online">Always online</option><option
                 value="always_offline">Always offline</option
               >
@@ -259,14 +321,24 @@
             {#each cfg.scheduled_outages as row, index (row)}
               <div class="outage">
                 <label
-                  >Node ID<input
+                  >{@render info(
+                    'Node ID',
+                    'outage_node',
+                    `outage-node-${index}`,
+                  )}<input
+                    aria-label="Node ID"
                     required
                     bind:value={row.node_id}
                     placeholder="mix-1"
                   /></label
                 >
                 <label
-                  >Start (ms)<input
+                  >{@render info(
+                    'Start (ms)',
+                    'outage_start',
+                    `outage-start-${index}`,
+                  )}<input
+                    aria-label="Start (ms)"
                     type="number"
                     min="0"
                     step="1"
@@ -275,7 +347,12 @@
                   /></label
                 >
                 <label
-                  >Duration (ms)<input
+                  >{@render info(
+                    'Duration (ms)',
+                    'outage_duration',
+                    `outage-duration-${index}`,
+                  )}<input
+                    aria-label="Duration (ms)"
                     type="number"
                     min="0"
                     step="1"
@@ -305,8 +382,17 @@
           </div>
         {/if}
         <label class="tick"
-          ><input type="checkbox" bind:checked={cfg.polling_enabled} />Enable
-          receiver polling</label
+          ><input
+            type="checkbox"
+            aria-label="Enable receiver polling"
+            bind:checked={cfg.polling_enabled}
+          /><span
+            >{@render info(
+              'Enable receiver polling',
+              'polling_enabled',
+              'polling_enabled',
+            )}</span
+          ></label
         >
       </section>
       <details>
@@ -317,7 +403,11 @@
           <div class="fields">
             {#each receivers as uid (uid)}
               <label
-                >{uid}<select
+                >{@render info(
+                  uid,
+                  'polling_override',
+                  `polling-override-${uid}`,
+                )}<select
                   aria-label={`Polling override for ${uid}`}
                   value={cfg.polling_overrides[uid] === undefined
                     ? ''
@@ -420,6 +510,15 @@
     display: flex;
     align-items: center;
     gap: 0.45rem;
+  }
+  .channel-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .channel-field select {
+    grid-column: 1 / -1;
   }
   .identity img {
     flex: none;

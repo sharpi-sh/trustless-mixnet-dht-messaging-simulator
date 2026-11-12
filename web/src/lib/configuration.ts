@@ -12,6 +12,78 @@ export type NumericField = [
   ('integer' | 'positive' | 'decimal')?,
 ];
 
+export const fieldHelp: Record<string, string> = {
+  participant_channel:
+    'How this person reaches their first network provider: through Tor, an Outline proxy, or directly.',
+  min_nodes: 'The number of mix servers used across the three routing layers.',
+  max_nodes: 'The largest mix-server count Python may choose for this run.',
+  randomise_count:
+    'Let Python choose the mix-server count between the minimum and maximum.',
+  pairing_strategy:
+    'Chooses which senders exchange messages with which recipients.',
+  pair_count:
+    'How many different sender and recipient pairs Python creates at random.',
+  exchanges: 'How many message-and-reply rounds each conversation contains.',
+  random_seed:
+    'A number that makes the same setup produce the same simulated decisions again.',
+  step_delay_ms:
+    'Real waiting time between displayed steps. Zero plays without an added visual pause.',
+  pattern:
+    'Controls whether nodes stay online or become unavailable during the run.',
+  outage_node: 'The exact node ID that will be taken offline, such as mix-1.',
+  outage_start: 'The simulated time when this outage begins.',
+  outage_duration:
+    'How long the selected node remains offline in simulated time.',
+  polling_enabled:
+    'Makes recipients check their provider for new message handles on a timer.',
+  polling_override:
+    'Lets this recipient use or ignore the main polling setting.',
+  polling_interval_ms:
+    'How often each enabled recipient checks for new messages. The default is 2 seconds.',
+  poll_batch:
+    'The fixed number of padded slots returned by each provider poll.',
+  dht_nodes:
+    'The number of servers participating in distributed message lookup.',
+  storage_nodes:
+    'The number of vault servers available to hold encrypted message pieces.',
+  replicas: 'How many vaults receive a copy of each encrypted message piece.',
+  chunk_bytes:
+    'The target size of each encrypted message piece before replication.',
+  operator_count:
+    'The number of simulated organisations responsible for network nodes.',
+  base_transit_delay_ms:
+    'The normal simulated travel time across each network connection.',
+  jitter_min_ms:
+    'The smallest extra random travel delay added to a connection.',
+  jitter_max_ms: 'The largest extra random travel delay added to a connection.',
+  ack_timeout_ms:
+    'How long Python waits before treating a network hand-off as failed.',
+  max_retries:
+    'How many fresh end-to-end attempts a failed message may receive.',
+  mu_per_second:
+    'Controls mix holding time. A larger value produces shorter average holds.',
+  payload_rate_per_minute:
+    'How often a sender gets an opportunity to send a real queued message.',
+  client_loop_rate_per_minute:
+    'How often a device sends a test packet that loops back to itself.',
+  drop_cover_rate_per_minute:
+    'How often cover packets are created to end inside the mix network.',
+  mix_loop_rate_per_minute:
+    'How often a mix server sends cover traffic around the network and back.',
+  failure_probability:
+    'Chance that a normally changing node starts an outage when checked.',
+  initial_offline_probability:
+    'Chance that a node begins the simulation offline.',
+  always_online_probability:
+    'Chance that a node is kept online for the whole simulation.',
+  always_offline_probability:
+    'Chance that a node is kept offline for the whole simulation.',
+  min_online_ms:
+    'Minimum simulated time a changing node remains online between outages.',
+  min_outage_ms: 'Shortest randomly generated outage in simulated time.',
+  max_outage_ms: 'Longest randomly generated outage in simulated time.',
+};
+
 export const networkFields: NumericField[] = [
   ['sender_count', 'Senders', 1, 10],
   ['receiver_count', 'Receivers', 1, 10],
