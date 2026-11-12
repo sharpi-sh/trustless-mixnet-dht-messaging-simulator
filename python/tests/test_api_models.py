@@ -17,7 +17,7 @@ from app.lab import Laboratory
         {"type": "set_node_availability", "enabled": True},
         {"type": "set_polling_enabled", "enabled": "false"},
         {"type": "set_playback_delay"},
-        {"type": "set_playback_delay", "delay_ms": 0},
+        {"type": "set_playback_delay", "delay_ms": -1},
         {"type": "block_stage_boundary", "target": " "},
         {"type": "set_staged_messages", "messages": {"msg-1": "  "}},
         {"type": "set_staged_messages", "messages": {}},

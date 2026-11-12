@@ -19,7 +19,7 @@ export const networkFields: NumericField[] = [
   ['max_nodes', 'Maximum mix nodes', 10, 20],
   ['exchanges', 'Exchanges per conversation', 1, 10],
   ['pair_count', 'Random pair count', 1, 100],
-  ['step_delay_ms', 'Playback delay (ms)', 1, 2000],
+  ['step_delay_ms', 'Playback delay (ms)', 0, 2000],
 ];
 export const pollingFields: NumericField[] = [
   ['polling_interval_ms', 'Polling interval (ms)', 100, 600000],

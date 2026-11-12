@@ -92,6 +92,10 @@ class Service:
                     session.changed.notify_all()
                 if lab.status != "running":
                     break
+                if lab.step_delay_ms == 0:
+                    # Max-speed playback still gives commands and stream readers a turn.
+                    await asyncio.sleep(0)
+                    continue
                 stepped = loop.time()
                 while True:
                     session.speed_changed.clear()

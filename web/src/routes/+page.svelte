@@ -278,7 +278,7 @@ npm run dev</code
           <input
             aria-label="Playback delay"
             type="range"
-            min="1"
+            min="0"
             max="2000"
             step="1"
             value={lab.step_delay_ms}

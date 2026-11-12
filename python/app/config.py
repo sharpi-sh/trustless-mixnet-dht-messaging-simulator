@@ -57,7 +57,7 @@ class Config(Model):
     operator_count: int = Field(32, ge=1, le=100)
     max_retries: int = Field(2, ge=0, le=10)
     ack_timeout_ms: int = Field(1000, ge=1, le=60000)
-    step_delay_ms: int = Field(500, ge=1, le=2000)
+    step_delay_ms: int = Field(500, ge=0, le=2000)
 
     @property
     def rpc_timeout_ms(self) -> int:

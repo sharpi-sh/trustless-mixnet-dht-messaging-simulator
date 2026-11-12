@@ -183,7 +183,7 @@
         <label
           >Playback delay (ms)<input
             type="number"
-            min="1"
+            min="0"
             max="2000"
             required
             bind:value={cfg.step_delay_ms}

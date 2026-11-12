@@ -57,7 +57,7 @@ class Command(Model):
     target: str = ""
     enabled: StrictBool | None = None
     drop_in_flight: StrictBool = False
-    delay_ms: int | None = Field(None, ge=1, le=2000, strict=True)
+    delay_ms: int | None = Field(None, ge=0, le=2000, strict=True)
     messages: dict[Identifier, str] | None = None
     after_sequence: int = Field(0, ge=0, strict=True)
     epoch: int | None = Field(None, ge=0, strict=True)
