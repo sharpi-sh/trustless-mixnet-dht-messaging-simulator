@@ -7,7 +7,7 @@ from typing import Literal
 from .config import Config
 from .loopix import Loopix, Route, Traffic
 from .sphinx import Hop, SphinxNetwork
-from .topology import MixNode, Topology
+from .topology import MixNode, Observation, Topology
 
 Lane = Literal["forward", "reply"]
 
@@ -124,19 +124,26 @@ class LoopixTraffic:
         self.packets[packet.id] = packet
         return packet
 
-    def _observe(self, observer: str | None, peer: str, now: int, success: bool) -> None:
+    def local_observation(self, observer: str | None, peer: str) -> Observation | None:
         node = self.topology.nodes.get(observer) if observer is not None else None
-        if isinstance(node, MixNode) and peer in node.adjacent_peers:
-            entry = node.adjacent_peers[peer]
-            if success:
-                entry.status = "online"
-                entry.last_contact = now
-                entry.successes += 1
-                entry.failures = 0
-            else:
-                entry.status = "unresponsive"
-                entry.failures += 1
-                entry.last_failure = now
+        if isinstance(node, MixNode) and node.online:
+            return node.adjacent_peers.get(peer)
+        return None
+
+    def _observe(self, observer: str | None, peer: str, now: int, success: bool) -> bool:
+        entry = self.local_observation(observer, peer)
+        if entry is None:
+            return False
+        if success:
+            entry.status = "online"
+            entry.last_contact = now
+            entry.successes += 1
+            entry.failures = 0
+        else:
+            entry.status = "unresponsive"
+            entry.failures += 1
+            entry.last_failure = now
+        return True
 
     def process(self, packet_id: str, node_id: str, now: int) -> Hop:
         packet = self.packets[packet_id]
@@ -173,6 +180,8 @@ class LoopixTraffic:
         packet = self.packets[packet_id]
         if packet.queued_at != node_id or packet.release_at is None or now < packet.release_at:
             raise ValueError("Packet cannot be released at this node and time")
+        if not self.topology.nodes[node_id].online:
+            raise ValueError("Queue owner unavailable")
         self._clear_queue(packet)
 
     def _clear_queue(self, packet: Packet) -> None:
@@ -183,16 +192,20 @@ class LoopixTraffic:
             packet.queued_at = None
             packet.release_at = None
 
-    def fail(self, packet_id: str, now: int, reason: str, *, unresponsive: bool = False) -> None:
+    def fail(self, packet_id: str, now: int, reason: str, *, unresponsive: bool = False) -> bool:
         packet = self.packets[packet_id]
         if packet.status != "active":
-            return
-        if unresponsive and packet.expected_node is not None:
-            self._observe(packet.previous_node, packet.expected_node, now, False)
+            return False
+        observed = (
+            unresponsive
+            and packet.expected_node is not None
+            and self._observe(packet.previous_node, packet.expected_node, now, False)
+        )
         self._clear_queue(packet)
         packet.status = "failed"
         packet.failure = reason
         packet.wire = b""
+        return observed
 
     def retry(self, packet_id: str) -> Packet | None:
         packet = self.packets[packet_id]

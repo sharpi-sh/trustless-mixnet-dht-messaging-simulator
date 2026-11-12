@@ -5,14 +5,11 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from struct import Struct
-from typing import TYPE_CHECKING
 
+from .engine import Engine, FailureOrigin, TransportFailure
 from .loopix import Traffic
 from .steps import Action
 from .traffic import Lane, LoopixTraffic, Packet
-
-if TYPE_CHECKING:
-    from .engine import Engine
 
 
 @dataclass(kw_only=True)
@@ -31,8 +28,13 @@ class PacketRelease(Action):
 
 
 @dataclass(kw_only=True)
-class PacketLost(Action):
-    reason: str = "Path unresponsive"
+class PacketLost(TransportFailure):
+    pass
+
+
+@dataclass(kw_only=True)
+class SourceDeadline(Action):
+    outage_version: int
 
 
 @dataclass(kw_only=True)
@@ -94,6 +96,7 @@ class PacketRuntime:
         self._transfers: dict[str, _Transfer] = {}
         self._sending: dict[str, str] = {}
         self._retries: dict[str, deque[tuple[str, Packet]]] = {p: deque() for p in sim.clients.people}
+        self._source_deadlines: dict[str, SourceDeadline] = {}
         self._started = False
 
     def start(self) -> None:
@@ -121,11 +124,31 @@ class PacketRuntime:
             self._arrive(action)
         elif isinstance(action, PacketRelease):
             self._release(action)
+        elif isinstance(action, SourceDeadline):
+            self._expire_source(action)
         elif isinstance(action, PacketLost):
             packet = self.traffic.packets[action.token]
             if packet.status == "active":
-                self.traffic.fail(packet.id, self.sim.now, action.reason, unresponsive=True)
-                self._failure(packet, action, action.reason)
+                origin = action.origin
+                assert origin is not None
+                observed = self.traffic.fail(
+                    packet.id,
+                    self.sim.now,
+                    origin.value,
+                    unresponsive=(
+                        origin.dispatched
+                        and action.source == packet.previous_node
+                        and action.target == packet.expected_node
+                    ),
+                )
+                if observed:
+                    self.sim.emit(
+                        "mixnet_adjacency_updated",
+                        action,
+                        observation="unresponsive",
+                        packet_id=packet.id,
+                    )
+                self._failure(packet, action, origin.value)
         else:
             return False
         return True
@@ -135,6 +158,15 @@ class PacketRuntime:
         while pending:
             message_id, packet = pending.popleft()
             if message_id in self._transfers:
+                if packet.status == "failed":
+                    ctx = Action(
+                        source=source,
+                        target=packet.target_id,
+                        message_id=message_id,
+                        token=packet.id,
+                        lane=packet.lane,
+                    )
+                    packet = self._make_retry(packet, ctx)
                 return message_id, packet
             self.traffic.fail(packet.id, self.sim.now, "Application transfer already terminated")
             packet.original_payload = b""
@@ -152,14 +184,70 @@ class PacketRuntime:
         packet = self.traffic.fire("payload", source, transfer.target, data, transfer.lane)
         return message_id, packet
 
+    def _wait_for_source(self, source: str) -> None:
+        node = self.sim.topology.nodes[source]
+        queued = {uid: (target, lane) for uid, target, _, lane in self.outbox[source]}
+        for uid in [self._sending.get(source), *(uid for uid, _ in self._retries[source])]:
+            if uid is not None and uid in self._transfers:
+                transfer = self._transfers[uid]
+                queued[uid] = (transfer.target, transfer.lane)
+        for uid, (target, lane) in queued.items():
+            pending = self._source_deadlines.get(uid)
+            if pending is None or pending.outage_version != len(node.history):
+                check = SourceDeadline(
+                    source=source,
+                    target=target,
+                    message_id=uid,
+                    lane=lane,
+                    outage_version=len(node.history),
+                )
+                self._source_deadlines[uid] = check
+                self.sim.schedule(
+                    check, (self.sim.config.max_retries + 1) * self.sim.config.ack_timeout_ms
+                )
+
+    def _expire_source(self, action: SourceDeadline) -> None:
+        uid, source = action.message_id, action.source
+        if self._source_deadlines.get(uid) is not action:
+            return
+        del self._source_deadlines[uid]
+        node = self.sim.topology.nodes[source]
+        if node.online or len(node.history) != action.outage_version:
+            return
+        # The scheduler expires unavailable application work; the device never constructs a packet.
+        for item in list(self.outbox[source]):
+            if item[0] == uid:
+                self.outbox[source].remove(item)
+        for entry in list(self._retries[source]):
+            if entry[0] == uid:
+                self._retries[source].remove(entry)
+                packet = entry[1]
+                self.traffic.fail(packet.id, self.sim.now, "Source unavailable")
+                packet.original_payload = b""
+        self._transfers.pop(uid, None)
+        if self._sending.get(source) == uid:
+            del self._sending[source]
+        self.sim.schedule(
+            PacketFailed(
+                source=source,
+                target=action.target,
+                message_id=uid,
+                lane=action.lane,
+                reason="Source unavailable",
+            )
+        )
+
     def _tick(self, action: TrafficClock) -> None:
         source = action.source
+        if not self.sim.topology.nodes[source].online:
+            if action.kind == "payload":
+                self._wait_for_source(source)
+            return
         item = self._take_payload(source) if action.kind == "payload" else None
         if item:
             message_id, packet = item
+            self._source_deadlines.pop(message_id, None)
         else:
-            if not self.sim.topology.nodes[source].online:
-                return
             cover_lane: Lane = (
                 "reply"
                 if source in self.sim.clients.people
@@ -219,6 +307,19 @@ class PacketRuntime:
         if packet.status != "active":
             return
         node = self.sim.topology.nodes[action.target]
+        if not node.online:
+            self.sim.schedule(
+                PacketLost(
+                    source=action.source,
+                    target=action.target,
+                    token=action.token,
+                    message_id=action.message_id,
+                    lane=action.lane,
+                    origin=FailureOrigin.TARGET_OFFLINE,
+                ),
+                self.sim.config.ack_timeout_ms,
+            )
+            return
         self.sim.emit(
             "message_forward_succeeded",
             action,
@@ -250,7 +351,10 @@ class PacketRuntime:
             delay_ms=hop.delay_ms,
             integrity="verified",
         )
-        if self.sim.topology.nodes[action.source].kind == "mix" or node.kind == "mix":
+        if (
+            self.traffic.local_observation(action.source, node.id) is not None
+            or self.traffic.local_observation(node.id, action.source) is not None
+        ):
             self.sim.emit("mixnet_adjacency_updated", action, observation="online", packet_id=packet.id)
         if hop.next_id is None:
             if packet.kind == "client_loop":
@@ -293,9 +397,25 @@ class PacketRuntime:
         packet = self.traffic.packets[action.token]
         if packet.status != "active":
             return
+        if not self.sim.topology.nodes[action.source].online:
+            self.traffic.fail(packet.id, self.sim.now, "Queue owner unavailable")
+            self._failure(packet, action, "Queue owner unavailable")
+            return
         self.traffic.release(packet.id, action.source, self.sim.now)
         self.sim.emit("mix_packet_released", action, packet_id=packet.id, traffic=packet.kind)
         self._transit(packet, action, action.source, action.target)
+
+    def _make_retry(self, failed: Packet, action: Action) -> Packet:
+        retry = self.traffic.retry(failed.id)
+        assert retry is not None
+        self.sim.emit(
+            "packet_retry_scheduled",
+            action,
+            previous_packet_id=failed.id,
+            packet_id=retry.id,
+            attempt=retry.attempt,
+        )
+        return retry
 
     def _failure(self, packet: Packet, action: Action, reason: str) -> None:
         self.sim.emit(
@@ -306,24 +426,18 @@ class PacketRuntime:
             attempt=packet.attempt,
             reason=reason,
         )
-        if self.sim.topology.nodes[action.source].kind == "mix":
-            self.sim.emit(
-                "mixnet_adjacency_updated", action, observation="unresponsive", packet_id=packet.id
-            )
         if packet.kind != "payload" or action.message_id not in self._transfers:
             packet.original_payload = b""
             return
-        retry = self.traffic.retry(packet.id)
-        if retry is not None:
+        if packet.attempt <= self.sim.config.max_retries:
+            retry = packet
+            if self.sim.topology.nodes[packet.source_id].online:
+                retry = self._make_retry(packet, action)
             self._retries[packet.source_id].append((action.message_id, retry))
-            self.sim.emit(
-                "packet_retry_scheduled",
-                action,
-                previous_packet_id=packet.id,
-                packet_id=retry.id,
-                attempt=retry.attempt,
-            )
+            if retry is packet:
+                self._wait_for_source(packet.source_id)
             return
+        self._source_deadlines.pop(action.message_id, None)
         del self._transfers[action.message_id]
         if self._sending.get(packet.source_id) == action.message_id:
             del self._sending[packet.source_id]

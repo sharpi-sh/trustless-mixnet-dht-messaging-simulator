@@ -2,7 +2,8 @@
 
 import heapq
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from random import Random
 from typing import Any, Literal
 
@@ -12,6 +13,23 @@ from .events import Event
 from .loopix import ProviderInbox
 from .simulation import Simulation
 from .steps import Action, SimulationStep, StepResult
+from .topology import NetworkPath
+
+
+class FailureOrigin(StrEnum):
+    BLOCKED = "blocked"
+    SOURCE_OFFLINE = "source unavailable"
+    TARGET_OFFLINE = "unresponsive"
+    DROPPED = "dropped in flight"
+
+    @property
+    def dispatched(self) -> bool:
+        return self in (FailureOrigin.TARGET_OFFLINE, FailureOrigin.DROPPED)
+
+
+@dataclass(kw_only=True)
+class TransportFailure(Action):
+    origin: FailureOrigin | None = None
 
 
 @dataclass(kw_only=True)
@@ -160,20 +178,29 @@ class Engine(Simulation):
             )
         )
 
+    def _transport_failure(
+        self, action: Action, path: NetworkPath, uid: str, callback: Action, origin: FailureOrigin
+    ) -> None:
+        path.failed += 1
+        self.emit(
+            "path_transit_failed",
+            action,
+            path_id=path.id,
+            transit_id=uid,
+            reason=origin.value,
+            dispatched=origin.dispatched,
+        )
+        if isinstance(callback, TransportFailure):
+            callback = replace(callback, origin=origin)
+        self.schedule(callback, self.config.ack_timeout_ms)
+
     def start_transit(self, action: Transit) -> None:
         path = self.topology.paths[self.topology.path_id(action.source, action.target)]
         path.attempted += 1
         uid = f"transit-{self.serial}-{path.attempted}"
         if path.blocked or not self.topology.nodes[action.source].online:
-            path.failed += 1
-            self.emit(
-                "path_transit_failed",
-                action,
-                path_id=path.id,
-                transit_id=uid,
-                reason="blocked" if path.blocked else "source unavailable",
-            )
-            self.schedule(action.failure, self.config.ack_timeout_ms)
+            origin = FailureOrigin.BLOCKED if path.blocked else FailureOrigin.SOURCE_OFFLINE
+            self._transport_failure(action, path, uid, action.failure, origin)
             return
         delay = path.delay(self.rng)
         end = Arrival(
@@ -212,16 +239,9 @@ class Engine(Simulation):
         path = self.topology.paths[self.topology.path_id(action.source, action.target)]
         del path.active[action.transit_id]
         if drop or not self.topology.nodes[action.target].online:
-            path.failed += 1
             path.dropped += int(drop)
-            self.emit(
-                "path_transit_failed",
-                action,
-                path_id=path.id,
-                transit_id=action.transit_id,
-                reason="dropped in flight" if drop else "unresponsive",
-            )
-            self.schedule(action.transit.failure, self.config.ack_timeout_ms)
+            origin = FailureOrigin.DROPPED if drop else FailureOrigin.TARGET_OFFLINE
+            self._transport_failure(action, path, action.transit_id, action.transit.failure, origin)
         else:
             path.completed += 1
             self.topology.nodes[action.target].last_activity = self.now
