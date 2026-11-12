@@ -40,7 +40,16 @@ test('first-message stepping pauses at a real device departure and becomes avail
   const track = page.getByRole('button', {
     name: /msg-1 · sender-1 to tor-sender-1 ·/,
   });
+  await expect(track.locator('.message-line')).toHaveCSS(
+    'stroke-width',
+    '1.25px',
+  );
+  await expect(track.locator('.message-hit')).toHaveCSS('stroke-width', '13px');
   await track.press('Enter');
+  await expect(track.locator('.message-line')).toHaveCSS(
+    'stroke-width',
+    '1.75px',
+  );
   const leg = page.locator(
     '[data-selected-leg="' + departure.payload.transit_id + '"]',
   );

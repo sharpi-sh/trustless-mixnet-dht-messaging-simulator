@@ -1124,7 +1124,7 @@
   }
   .edge .stroke {
     stroke: #a6b4ab;
-    stroke-width: 1.1;
+    stroke-width: 0.65;
     stroke-dasharray: 2 3;
     opacity: 0.55;
     pointer-events: none;
@@ -1141,13 +1141,13 @@
   .edge.planned .stroke,
   .edge.selected .stroke {
     stroke: #4f72c0;
-    stroke-width: 2;
+    stroke-width: 1;
     stroke-dasharray: none;
     opacity: 0.92;
   }
   .edge.active .stroke {
     stroke: #388653;
-    stroke-width: 2.2;
+    stroke-width: 1.1;
     stroke-dasharray: none;
     opacity: 1;
   }
@@ -1156,7 +1156,7 @@
     stroke: #b9493a;
     stroke-dasharray: 6 3;
     opacity: 0.95;
-    stroke-width: 1.8;
+    stroke-width: 0.9;
   }
   .edge.unavailable .stroke {
     stroke: #b08774;
@@ -1165,13 +1165,13 @@
   .edge:hover .stroke,
   .edge:focus-visible .stroke,
   .edge[aria-pressed='true'] .stroke {
-    stroke-width: 3;
+    stroke-width: 1.5;
     opacity: 1;
   }
   .pinned-route {
     fill: none;
     stroke: #3e54c0;
-    stroke-width: 3;
+    stroke-width: 1.5;
     stroke-dasharray: 7 4;
   }
   .route-node {
@@ -1206,7 +1206,7 @@
   }
   .edge.substrate.active .stroke {
     stroke: #728d7f;
-    stroke-width: 1.3;
+    stroke-width: 0.75;
     opacity: 0.36;
   }
   .marker-hit {
@@ -1230,7 +1230,7 @@
   }
   .message-halo {
     stroke: #fff;
-    stroke-width: 5.2;
+    stroke-width: 2.4;
     pointer-events: none;
   }
   .message-track path,
@@ -1244,7 +1244,7 @@
   }
   .message-line {
     stroke: var(--message-colour);
-    stroke-width: 3.4;
+    stroke-width: 1.25;
     pointer-events: none;
   }
   .message-track.failed .message-line {
@@ -1253,7 +1253,7 @@
   .message-track:hover .message-line,
   .message-track:focus-visible .message-line,
   .message-track.chosen .message-line {
-    stroke-width: 4;
+    stroke-width: 1.75;
   }
   .history-dot {
     fill: var(--message-colour);
