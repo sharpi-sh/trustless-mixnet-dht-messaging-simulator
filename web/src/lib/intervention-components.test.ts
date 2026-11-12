@@ -34,7 +34,7 @@ test('selected receiver, blocked path and partial receiver polling are shown fro
   expect(body).toContain('Restore path');
   for (const name of new Set(snapshot.topology.paths.map((p) => p.boundary)))
     expect(body).toContain(name);
-  expect(body).toContain('Drop traffic already in flight');
+  expect(body).toMatch(/Drop\s+traffic\s+already\s+in\s+flight/);
   expect(body).not.toContain('Take node offline');
 });
 
