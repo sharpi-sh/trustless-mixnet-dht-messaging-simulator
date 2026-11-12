@@ -9,7 +9,7 @@ from .steps import Action
 from .storage import MessageManifest
 
 if TYPE_CHECKING:
-    from .engine import Engine
+    from .storage_simulation import StorageSimulation
 
 
 @dataclass(kw_only=True)
@@ -21,11 +21,14 @@ class VaultWrite(Action):
 class VaultRead(Action):
     index: int
     replica: int
+    generation: int = 0
+    data: bytes = field(default=b"", repr=False)
+    ticket: str = field(default="", repr=False)
 
 
 @dataclass(kw_only=True)
 class BytesReturned(VaultRead):
-    data: bytes = field(repr=False)
+    pass
 
 
 @dataclass(kw_only=True)
@@ -59,14 +62,18 @@ class WriteJob:
 @dataclass
 class ReadJob:
     manifest: MessageManifest
+    device: str
+    generation: int
+    tickets: dict[int, str] = field(default_factory=dict)
     received: dict[str, bytes] = field(default_factory=dict)
 
 
 class VaultRuntime:
-    def __init__(self, sim: Engine):
+    def __init__(self, sim: StorageSimulation):
         self.sim = sim
         self.writes: dict[str, WriteJob] = {}
         self.reads: dict[str, ReadJob] = {}
+        self.generation = 0
 
     def place(self, action: Action, ciphertext: bytes) -> None:
         """action.source is the DHT/storage gateway where the opaque packet arrived."""
@@ -148,18 +155,26 @@ class VaultRuntime:
             )
         )
 
+    def cancel_read(self, token: str) -> None:
+        job = self.reads.pop(token, None)
+        if job is not None:
+            for ticket in job.tickets.values():
+                self.sim.retrieval.cancel(ticket)
+
     def fetch(self, action: Action, manifest: MessageManifest) -> None:
-        self.reads[action.token] = ReadJob(manifest)
+        self.generation += 1
+        self.reads[action.token] = ReadJob(manifest, action.source, self.generation)
         for i in range(len(manifest.fragments)):
             self._read(action, i, 0)
 
     def _read(self, action: Action, index: int, replica: int) -> None:
-        fragment = self.reads[action.token].manifest.fragments[index]
+        job = self.reads[action.token]
+        fragment = job.manifest.fragments[index]
         if replica >= len(fragment.replicas):
-            del self.reads[action.token]
+            self.cancel_read(action.token)
             self.sim.schedule(
                 VaultFailed(
-                    source=action.source,
+                    source=job.device,
                     token=action.token,
                     lane=action.lane,
                     message_id=action.message_id,
@@ -167,19 +182,22 @@ class VaultRuntime:
                 )
             )
             return
-        uid = fragment.replicas[replica]
+        service = fragment.replicas[replica]
         read = VaultRead(
-            source=action.source,
-            target=uid,
+            source=service,
+            target=service,
             lane=action.lane,
             token=action.token,
             message_id=action.message_id,
             index=index,
             replica=replica,
+            generation=job.generation,
         )
         miss = VaultMiss(**vars(read), operation="read")
         self.sim.emit("fragment_retrieval_started", read, fragment_id=fragment.id, replica=replica + 1)
-        self.sim.transit(read.source, uid, read, miss, token=action.token, lane=action.lane)
+        job.tickets[index] = self.sim.retrieval.request(
+            job.device, service, bytes.fromhex(fragment.id), fragment.size + 1, read, miss
+        )
 
     def handle(self, action: Action) -> bool:
         sim = self.sim
@@ -201,51 +219,66 @@ class VaultRuntime:
                 f = self.writes[action.token].manifest.fragments[action.index]
                 sim.storage.record_unavailable(action.target, f, "write")
                 self._settle_write(action, False)
-            elif action.token in self.reads:
-                f = self.reads[action.token].manifest.fragments[action.index]
-                if action.operation == "read":
-                    sim.storage.record_unavailable(action.target, f, "read")
+            elif (active := self.reads.get(action.token)) and active.generation == action.generation:
                 self._read(action, action.index, action.replica + 1)
         elif isinstance(action, BytesReturned):
-            if action.token not in self.reads:
+            job = self.reads.get(action.token)
+            if job is None or job.tickets.get(action.index) != action.ticket:
                 return True
-            read = self.reads[action.token]
-            f = read.manifest.fragments[action.index]
-            read.received[f.id] = action.data
+            fragment = job.manifest.fragments[action.index]
+            data = action.data[1:]
+            try:
+                if action.data[:1] != b"+":
+                    raise ValueError("Replica could not return the requested fragment")
+                fragment.verify(data)
+            except ValueError:
+                self._read(action, action.index, action.replica + 1)
+                return True
+            job.tickets.pop(action.index)
+            job.received[fragment.id] = data
             sim.emit(
                 "fragment_retrieved",
                 action,
-                fragment_id=f.id,
+                fragment_id=fragment.id,
                 integrity="verified",
-                container=read.manifest.id,
+                container=job.manifest.id,
             )
-            if len(read.received) == len(read.manifest.fragments):
-                data = sim.storage.reconstruct(read.manifest, read.received)
-                del self.reads[action.token]
+            if len(job.received) == len(job.manifest.fragments):
+                ciphertext = sim.storage.reconstruct(job.manifest, job.received)
+                self.cancel_read(action.token)
                 sim.schedule(
                     Reconstructed(
-                        source=action.source,
+                        source=job.device,
                         token=action.token,
                         lane=action.lane,
                         message_id=action.message_id,
-                        ciphertext=data,
+                        ciphertext=ciphertext,
                     )
                 )
         elif isinstance(action, VaultRead):
-            if action.token not in self.reads:
+            job = self.reads.get(action.token)
+            if job is None or job.tickets.get(action.index) != action.ticket:
                 return True
-            f = self.reads[action.token].manifest.fragments[action.index]
+            # Resolve only the opaque identifier delivered to this particular vault.
             try:
-                data = sim.storage.get(action.target, f)
-            except (ValueError, KeyError):
-                sim.emit("fragment_retrieval_failed", action, fragment_id=f.id)
-                self._read(action, action.index, action.replica + 1)
-            else:
-                returned = BytesReturned(**vars(action), data=data)
-                miss = VaultMiss(**vars(action), operation="return")
-                sim.transit(
-                    action.target, action.source, returned, miss, token=action.token, lane=action.lane
-                )
+                fragment = sim.storage.nodes[action.target].placements[action.data.hex()].fragment
+                payload = b"+" + sim.storage.get(action.target, fragment)
+            except (KeyError, ValueError):
+                sim.emit("fragment_retrieval_failed", action, fragment_id=action.data.hex())
+                payload = b"-"
+            returned = BytesReturned(
+                source=job.device,
+                target=job.device,
+                token=action.token,
+                lane=action.lane,
+                message_id=action.message_id,
+                index=action.index,
+                replica=action.replica,
+                ticket=action.ticket,
+                generation=action.generation,
+            )
+            miss = VaultMiss(**vars(action), operation="return")
+            sim.retrieval.reply(action.ticket, payload, returned, miss)
         else:
             return False
         return True
