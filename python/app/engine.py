@@ -90,7 +90,7 @@ class Engine(Simulation):
 
     def lifecycle(self,command: str) -> None:
         if command == "reset":
-            self.__init__(self.config,self.id)
+            type(self).__init__(self,self.config,self.id)
             return
         if command in {"run","resume","step"}:
             if self.status not in {"ready","running","paused"}:
