@@ -66,7 +66,9 @@
     target: string;
     lane: Direction;
     failed: boolean;
+    at: number;
   };
+  let plannedPacket: string | undefined;
   let epochKey = '',
     last = 0;
   let seen = new Map<string, Trace>(),
@@ -75,6 +77,7 @@
     if (epochKey !== key || rows.length < last) {
       epochKey = key;
       last = 0;
+      plannedPacket = undefined;
       seen = new Map();
       chosen = new Map();
     }
@@ -85,8 +88,10 @@
       if (
         e.event_type === 'mixnet_route_constructed' &&
         e.message_id &&
+        typeof p.packet_id === 'string' &&
         Array.isArray(p.ordered_route)
       ) {
+        plannedPacket = p.packet_id;
         chosen = new Map();
         const ids = p.ordered_route.filter(
           (n): n is string => typeof n === 'string',
@@ -97,7 +102,17 @@
             target: ids[j],
             lane,
             failed: false,
+            at: e.simulation_time_ms,
           });
+      }
+      if (
+        plannedPacket &&
+        p.packet_id === plannedPacket &&
+        (e.event_type === 'message_forward_failed' ||
+          (e.event_type === 'sphinx_layer_processed' && p.next_id === null))
+      ) {
+        chosen = new Map();
+        plannedPacket = undefined;
       }
       if (
         e.event_type.startsWith('path_transit_') &&
@@ -110,6 +125,7 @@
           target: e.target_id,
           lane,
           failed: e.event_type === 'path_transit_failed',
+          at: e.simulation_time_ms,
         });
       }
     }
@@ -130,15 +146,20 @@
               : '';
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active);
-        const planned = traces.chosen.get(p.id),
+        const planned = ['running', 'paused'].includes(lab.status)
+            ? traces.chosen.get(p.id)
+            : undefined,
           observed = traces.seen.get(p.id);
+        const recentFailure =
+          observed?.failed &&
+          lab.simulation_time_ms - observed.at <= lab.config.ack_timeout_ms;
         const important =
           p.blocked ||
           active.length ||
           p.id === selectedPath ||
           known ||
           planned ||
-          observed?.failed;
+          recentFailure;
         // DHT transports are physical links. Only contacts reported by the selected node are labelled known.
         const substrate =
           left.kind === 'dht' ||
@@ -156,18 +177,35 @@
           !p.completed &&
           !p.blocked &&
           p.id !== selectedPath &&
-          !observed?.failed
+          !recentFailure
         )
           return [];
-        const direction = active[0]?.[1] ?? planned ?? observed;
-        const src = direction?.source ?? p.source_id,
-          dst = direction?.target ?? p.target_id;
-        const lane = direction?.lane ?? 'forward',
-          curve = laneCurve(
-            layout.nodes.get(src)!,
-            layout.nodes.get(dst)!,
-            lane,
-          );
+        const directions = active.length
+          ? active.map(([, t]) => t)
+          : [
+              planned ??
+                observed ?? {
+                  source: p.source_id,
+                  target: p.target_id,
+                  lane: 'forward' as const,
+                },
+            ];
+        const tracks = new Map(
+          directions.map(({ source, target, lane }) => [
+            source + '/' + lane,
+            {
+              source,
+              target,
+              lane,
+              curve: laneCurve(
+                layout.nodes.get(source)!,
+                layout.nodes.get(target)!,
+                lane,
+              ),
+            },
+          ]),
+        );
+        const lane = directions[0].lane;
         const unreachable =
           left.adjacent_peers?.[right.id]?.status === 'unresponsive' ||
           right.adjacent_peers?.[left.id]?.status === 'unresponsive';
@@ -175,7 +213,7 @@
           ? 'blocked'
           : active.length
             ? 'active'
-            : observed?.failed
+            : recentFailure
               ? 'failed'
               : !left.online || !right.online || unreachable
                 ? 'unavailable'
@@ -189,7 +227,16 @@
                         ? 'completed'
                         : 'configured';
         return [
-          { p, state, curve, lane, known, active, overlay: !!important, other },
+          {
+            p,
+            state,
+            tracks,
+            lane,
+            known,
+            active,
+            overlay: !!important,
+            other,
+          },
         ];
       })
       .sort((a, b) => Number(a.overlay) - Number(b.overlay)),
@@ -202,11 +249,7 @@
       e.active.map(([id, t]) => ({
         id,
         t,
-        curve: laneCurve(
-          layout.nodes.get(t.source)!,
-          layout.nodes.get(t.target)!,
-          t.lane,
-        ),
+        curve: e.tracks.get(t.source + '/' + t.lane)!.curve,
       })),
     ),
   );
@@ -272,7 +315,16 @@
     viewport.scrollTo(0, 0);
   }
   function handleKey(e: KeyboardEvent, run: () => void) {
-    if (e.key === 'Enter' || e.key === ' ') {
+    const arrows: Record<string, [number, number]> = {
+      ArrowLeft: [-80, 0],
+      ArrowRight: [80, 0],
+      ArrowUp: [0, -80],
+      ArrowDown: [0, 80],
+    };
+    if (arrows[e.key]) {
+      e.preventDefault();
+      viewport.scrollBy(...arrows[e.key]);
+    } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       run();
     }
@@ -349,7 +401,6 @@
     onpointercancel={() => (drag = undefined)}
     role="region"
     aria-label="Pan network diagram"
-    tabindex="0"
   >
     <svg
       class="world"
@@ -411,10 +462,15 @@
               ? 'known contact'
               : e.state}</title
           >
-          <path class="hit" d={e.curve.d} /><path
-            class="stroke"
-            d={e.curve.d}
-          />
+          {#each e.tracks as [key, track] (key)}
+            <path class="hit" d={track.curve.d} />
+            <path
+              class="stroke"
+              d={track.curve.d}
+              data-track-source={track.source}
+              data-track-lane={track.lane}
+            />
+          {/each}
         </g>
       {/each}
       {#each lab.topology.nodes as n (n.id)}
