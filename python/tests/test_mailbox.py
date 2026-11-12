@@ -208,9 +208,10 @@ def test_delayed_manifest_lookup_result_cannot_spend_a_new_reply_block():
     ciphertext = sim.send()
     sim.through(lambda: bool(sim.inboxes["receiver-1"].messages))
     sim.poll()
-    sim.through(lambda: bool(sim.rpc.pending))
-    op = next(token for token in sim.rpc.pending if "/" in token)
-    job_id, ticket = op.split("/")
+    sim.through(lambda: any(job.pending and not job.egress for job in sim.mail._jobs.values()))
+    job = next(job for job in sim.mail._jobs.values() if not job.egress)
+    job_id, ticket = job.token, job.ticket
+    op = f"{job_id}/{ticket}"
     sim.retrieval.handle(RetrievalFailure(exchange=ticket, reason="expired"))
     sim.through(lambda: bool(sim.mail._jobs[job_id].ticket and sim.mail._jobs[job_id].ticket != ticket))
     new_ticket = sim.mail._jobs[job_id].ticket
