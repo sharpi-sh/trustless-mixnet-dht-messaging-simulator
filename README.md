@@ -8,7 +8,7 @@ Conventional messaging and email systems depend on identifiable accounts, truste
 
 This project explores simple text messaging from Alice, or any number of senders, to Bob or other recipients, with anonymous replies and without relying on username-and-password accounts. Participants instead use disposable combinations of cryptographic keys and message vaults. The intended design layers independent source, destination and routing protections so privacy does not depend on any single component.
 
-The objective is a private, trustless delivery model in which network nodes may be unavailable, compromised or malicious, while a recipient can verify that retrieved ciphertext was not altered and decrypt it without intermediary nodes reading it. Even modified node software should encounter encrypted material rather than readable message text. Sender authentication remains a separate unresolved protocol concern.
+The objective is a private, trustless delivery model in which network nodes may be unavailable, compromised or malicious, while a recipient can verify that retrieved ciphertext was not altered and decrypt it without intermediary nodes reading it. Even modified node software should encounter encrypted material rather than readable message text. Each device signs its messages and replies with Ed25519. The recipient checks the signature against the signing key pinned to the expected participant ID for this simulation. Real-world identity verification is outside the model.
 
 This is a thought experiment implemented as a local simulation of the relevant hardware roles, network nodes and protocol behaviour. It does not prove complete anonymity, untraceability or production security.
 
@@ -52,8 +52,8 @@ sequenceDiagram
     participant BT as Bob Tor abstraction
     participant B as Bob device
 
-    Note over A,V: Forward message carries Alice's reply public key inside encrypted content
-    A->>AT: Compose and encrypt message
+    Note over A,V: Alice signs the message context, text and reply public key
+    A->>AT: Sign and encrypt message for Bob
     AT->>IP: Tor egress to Loopix provider
     IP->>L1: Source-routed Sphinx packet
     L1->>L2: Process layer and apply mix delay
@@ -70,9 +70,9 @@ sequenceDiagram
     BT->>V: Fetch replicas listed in the decrypted manifest
     V-->>BT: Return encrypted fragments
     BT-->>B: Reconstruct and decrypt
-    Note over B: Alice's unverified reply key becomes visible after decryption
+    Note over B: Verify Alice against the pinned signing key, then accept her reply key
 
-    B->>BT: Encrypt reply to Alice's reply key
+    B->>BT: Sign reply and encrypt to Alice's verified reply key
     BT->>EP: Provider acts as reply ingress
     EP->>L1: New independent source route
     L1->>L2: Process reply packet
@@ -88,7 +88,7 @@ sequenceDiagram
     AT->>D: Resolve handle and return manifest to Alice
     AT->>V: Fetch replicas listed in the decrypted manifest
     V-->>AT: Return encrypted reply fragments
-    AT-->>A: Reconstruct and decrypt reply
+    AT-->>A: Reconstruct, decrypt and verify Bob's reply
 ```
 
 Transfers between network nodes traverse a Python-owned `NetworkPath` with its own logical transit delay. Device cryptography and local storage operations run on their owning nodes. Loopix mixing delay occurs inside each mix layer and playback delay only controls presentation speed.
@@ -99,7 +99,7 @@ Transfers between network nodes traverse a Python-owned `NetworkPath` with its o
 - **FastAPI service:** typed HTTP commands, health and state endpoints, plus a WebSocket event stream.
 - **SvelteKit/Vite web client (`web/`):** connection and configuration screens, controls, algorithm inspectors and event timeline.
 - **D3/SVG visualisation:** topology, actual routes, alternatives, failures, retries and node state.
-- **Cryptography layer:** maintained Python primitives for recipient confidentiality, ciphertext integrity, key agreement and reply-key handling.
+- **Cryptography layer:** maintained Python primitives for recipient confidentiality, ciphertext integrity, key agreement and verification of device signatures against per-run pins.
 
 The implementation specification is in [`.agents/instructions/distributed-messaging-simulator-implementation.md`](.agents/instructions/distributed-messaging-simulator-implementation.md).
 
@@ -154,7 +154,7 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 - [Local HTTP and WebSocket contract](docs/local-api.md)
 - [Loopix routing and provider discovery](docs/protocols/loopix.md)
 - [Kademlia, bootstrap recovery and replicated storage](docs/protocols/kademlia.md)
-- [Application encryption and visibility](docs/protocols/application-envelope.md)
+- [Application encryption, sender verification and visibility](docs/protocols/application-envelope.md)
 - [Sphinx implementation, upstream pin, compatibility fixtures and licence](python/app/sphinx_ref/NOTICE.md)
 - [One-shot build report and test output](docs/reports/build.html)
 

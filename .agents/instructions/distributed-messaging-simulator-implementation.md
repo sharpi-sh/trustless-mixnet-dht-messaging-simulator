@@ -42,7 +42,7 @@ Build the application described in this document. Treat this document as the sou
 - Run tests after each logical stage and provide a test/coverage report.
 - Work in short test/implementation/verification loops. A logical component is incomplete until its focused tests pass and its observable output has been checked.
 - Do not silently invent protocol rules where this specification marks a decision as unresolved. Implement an explicit interface or documented MVP assumption instead.
-- Do not add authentication, registration, contact approval, a central identity directory or a pre-shared secret as a prerequisite for Alice to send Bob a message. The intended starting model is that Bob publishes a public key on a public webpage and Alice retrieves it.
+- Allow first contact using Bob’s published encryption key and provider address. Python provisions independent signing keys and pins their public keys to each simulated participant ID. Sending requires no account, prior contact approval, real-world identity service or pre-shared secret.
 - Keep a protocol registry in Python containing the exact algorithm name, reference, version/date, parameters and declared simulation boundaries. Return it through the API and display it in the UI.
 
 ---
@@ -403,8 +403,8 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 - Python emits typed lineage events for public-key retrieval, reply-key encapsulation, encryption, chunking, manifest publication, fragment storage, retrieval, reconstruction and decryption.
 - The UI can highlight the current location and containment relationship of each safe-to-display artefact.
 - Alice's reply public key travels inside the encrypted message content. It may be represented as accompanying encrypted chunks and the encrypted manifest, but it must not be shown as plaintext stored in the DHT.
-- Bob learns the reply public key only after retrieving, reconstructing and decrypting the message bundle.
-- The UI clearly labels the key as an unverified reply key; its presence does not authenticate Alice.
+- Bob accepts the reply public key only after retrieval, reconstruction, decryption and verification against Alice’s pinned signing key.
+- The UI identifies the reply key as authenticated by the signature of the pinned simulated sender. It explains the scope of that pin.
 - Private keys and plaintext network payloads never appear in path, DHT, storage or mixnet telemetry.
 
 ---
@@ -642,7 +642,8 @@ Suggested properties:
 - `display_name`
 - `participant_role` or scenario role
 - `public_key`
-- `private_key_reference`
+- `private_key_reference` for X25519 recipient decryption
+- an independently generated Ed25519 signing private key and its public verification key
 - `mailbox_id`
 - `tor_network_id`
 - `outgoing_messages`
@@ -654,7 +655,7 @@ Suggested properties:
 - `client_state`
 - `created_at_sim_time`
 
-The private key must never be sent to the frontend as a normal telemetry field. Do not include private key bytes in logs, event payloads or node inspectors.
+Both private keys must remain on the simulated device. Do not include private key bytes in logs, event payloads or node inspectors.
 
 The frontend may display a key fingerprint and public key, but not private key material.
 
@@ -668,8 +669,8 @@ Alice may:
 
 - retrieve Bob's published public key from a simulated public webpage/public-key source
 - compose a message
-- encrypt the message for Bob
-- include a sender reply public key inside the encrypted payload/bundle, subject to the protocol limitation described below
+- sign the text, message context and designated X25519 reply public key with her Ed25519 private key
+- encrypt the signed bundle for Bob
 - submit the encrypted envelope through her own Tor abstraction
 - observe sending progress
 
@@ -680,22 +681,16 @@ Bob may:
 - retrieve the encrypted manifest and fragments
 - reconstruct the encrypted payload
 - decrypt using his private key
-- read the message
-- compose and send a reply using the reply public key carried inside the decrypted bundle
+- verify the signed context, content and designated reply key against the expected sender’s pinned signing key
+- read the accepted message and send a signed, encrypted reply to its verified reply key
 
 The first implementation may use simulated public-key publication/retrieval. It must not require a pre-existing shared secret or a prior contact registration.
 
-### Security limitation that must be visible in documentation
+### Sender authentication within one simulation
 
-A public key embedded inside an encrypted message can provide a reply destination after Bob decrypts the message. By itself, it does **not** cryptographically prove that the sender owns that key. Anyone can encrypt a message to Bob's public key and include an arbitrary sender public key.
+Each device signs every forward message and reply with its own Ed25519 private key. A trusted, simulated directory pins each expected participant ID to its public verification key for the run. After decryption, the recipient checks the signature and expected message context before accepting the plaintext or learning the enclosed reply key. An attacker who knows the recipient’s public encryption key can create ciphertext but cannot impersonate the pinned sender without its signing private key.
 
-Do not silently claim sender authentication. For the MVP:
-- implement recipient confidentiality;
-- carry the sender's reply public key inside the encrypted content;
-- label sender identity as unverified unless a separate authentication mechanism is specified;
-- document the limitation in the UI or technical notes.
-
-Do not add a signature requirement as a prerequisite to sending in this MVP. Keep an authentication extension point for a later protocol decision.
+The application assumes authentic directory pins at setup. Display names and participant IDs represent simulated devices. External identity verification, device compromise and directory compromise remain outside the model.
 
 ## 4.4 TorNetwork
 
@@ -736,7 +731,7 @@ One `Mixnet` object manages multiple `MixNode` instances.
 
 The MVP mixnet algorithm is the Loopix construction published at USENIX Security 2017. Implement the protocol behaviour described by that paper: providers, a stratified topology, independent per-packet source routes, Sphinx packet processing, replay-tag rejection, source-selected exponentially distributed per-hop delays, client and mix loop traffic, drop cover traffic and fixed-size polling responses. Real sockets may be replaced by deterministic simulation steps, but the Sphinx and routing algorithms must not be replaced by placeholders. If any required part is abstracted, label the subsystem `Loopix routing model`, list the deviation in protocol metadata and do not claim a complete Loopix implementation.
 
-Loopix users are associated with providers. In this simulator that association uses an ephemeral network identifier and provider assignment; it must not introduce a username/password account, central identity directory or prior contact approval. Bob's published contact data must include the provider/network location required to construct a route without exposing Bob's physical location.
+Loopix users are associated with providers. In this simulator that association uses an ephemeral network identifier and provider assignment; it must not introduce a username/password account, external identity service or prior contact approval. Bob's published contact data must include the provider/network location required to construct a route without exposing Bob's physical location.
 
 Responsibilities:
 
@@ -951,7 +946,7 @@ Potential fields:
 
 The manifest's privacy properties are not fully specified. Do not assume that encrypting a manifest with Bob's public key automatically solves all metadata leakage. Document which fields are visible to DHT/storage nodes and which are encrypted.
 
-The lineage view may show that Alice's encrypted message bundle contains a reply public key and that its encrypted chunks were indexed through the DHT. It must not show or store Alice's reply public key as plaintext DHT metadata. Bob obtains the value only after successful reconstruction and decryption, and the UI labels it as unverified.
+The lineage view may show that Alice's encrypted message bundle contains a reply public key and that its encrypted chunks were indexed through the DHT. It must not show or store Alice's reply public key as plaintext DHT metadata. Bob accepts the value only after successful reconstruction, decryption and signature verification. The UI identifies the trusted, per-run signing-key pin.
 
 ## 4.12 Simulation support objects
 
@@ -1019,30 +1014,26 @@ Cryptography runs in Python for this simulator. The browser is not the cryptogra
 
 Use a maintained, reputable Python cryptography library. Do not implement cryptographic primitives manually.
 
-The initial candidate construction discussed for the project is:
+The application uses these primitives.
 
 - X25519 for ephemeral key agreement;
 - HKDF-SHA-256 for deriving an encryption key;
 - AES-256-GCM for authenticated message encryption;
 - SHA-256 for hashing/integrity identifiers;
-- Ed25519 may be considered for a later authentication/signature extension, but must not become a prerequisite for the MVP send flow.
+- Ed25519 for signing and verifying application messages and replies against per-run signing-key pins. [RFC 8032 §5.1](https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1)
 
 Use a maintained library such as Python `cryptography` for supported primitives. Confirm the library's actual algorithm support and API version during implementation.
 
 ## 5.2 Message encryption flow
 
-For the MVP recipient-confidentiality flow:
-
-1. Bob has an X25519 key pair.
-2. Bob's public key is published through a simulated public webpage/public-key source.
-3. Alice retrieves Bob's public key.
-4. Alice generates an ephemeral X25519 key pair.
-5. Alice computes a shared secret using her ephemeral private key and Bob's public key.
-6. HKDF derives an AES-256-GCM key.
-7. Alice encrypts the message payload using a fresh nonce.
-8. The envelope carries the ephemeral public key, nonce, ciphertext and version/algorithm metadata.
-9. Bob uses his private key and the ephemeral public key to derive the same shared secret and decrypt.
-10. The encrypted content may include Alice's reply public key so Bob can encrypt a reply to Alice.
+1. Alice and Bob each generate independent Ed25519 signing and X25519 encryption key pairs. The simulated directory pins their signing public keys to their respective participant IDs.
+2. Alice retrieves Bob’s published X25519 public key and provider address.
+3. Alice signs the text, her designated X25519 reply key, both participant IDs, the target encryption key, the conversation and message IDs, the exchange and its direction.
+4. She uses a fresh ephemeral X25519 key and Bob’s X25519 public key for agreement. HKDF-SHA-256 derives the AES-256-GCM key. She encrypts the signed bundle with a fresh nonce.
+5. The envelope carries the ephemeral public key, nonce, ciphertext and version/algorithm metadata.
+6. Bob reconstructs the ciphertext and decrypts with his X25519 private key. He checks the signature using the expected participant’s pinned Ed25519 verification key and the expected message context.
+7. After successful verification, Bob accepts the text and enclosed reply address. A malformed bundle, context mismatch or invalid signature cannot update his received messages or learned reply keys.
+8. Bob signs his reply with his own Ed25519 private key and encrypts it to the verified X25519 reply key. Alice verifies his signature in the same way.
 
 Do not reuse nonces with the same AES-GCM key.
 
@@ -1050,9 +1041,9 @@ Use fresh ephemeral key material for each message unless a separately specified 
 
 ## 5.3 Important protocol limitation
 
-The sender reply public key carried inside the encrypted payload allows Bob to address a reply to that key after decryption. It does not authenticate the sender's identity. The UI and technical documentation must make that distinction clear.
+The signature binds the designated reply address to the signing key pinned to Alice’s participant ID for this simulation. That pin is a simulator trust assumption. The UI and technical documentation must explain that real-world identity assurance requires an independent trust mechanism.
 
-Do not claim forward secrecy for the whole messaging system merely because ephemeral X25519 is used. The exact key lifecycle, private-key retention, replay protection, sender authentication and compromise model need a later protocol review.
+Do not claim forward secrecy for the whole messaging system merely because ephemeral X25519 is used. Key retention, compromise recovery and stronger replay guarantees require a separate protocol review.
 
 ## 5.4 Cryptographic data visibility
 
@@ -1906,8 +1897,8 @@ Test at minimum:
 - Fresh nonces/ephemeral keys are used according to the chosen construction.
 - Private keys are not included in event payloads or API responses.
 - Sender reply public key is recoverable only after decrypting the payload.
-- Tests do not claim sender authentication from the embedded reply key.
-- Lineage shows the reply key as encrypted content through DHT/storage and reveals it only after Bob decrypts.
+- Tests reject a forged signature, a substituted reply key and a valid signature presented under a different participant or message context before accepting text or storing a reply key.
+- Lineage shows the reply key as encrypted content through DHT/storage and reveals it only after Bob decrypts and verifies the sender.
 
 ### Messages, polling and device logs
 - Generated default messages contain 3–10 words from the bundled Lorem ipsum corpus.
@@ -1994,7 +1985,7 @@ Expected result:
 10. Bob polls for available messages.
 11. Bob retrieves the required encrypted fragments.
 12. Bob reconstructs and decrypts messages.
-13. Replies can be sent using the sender reply public key included in the encrypted content.
+13. Replies are signed and encrypted to the sender reply public key verified in the received content.
 14. The UI shows all relevant events, route changes, node states, protocol-state updates and exact algorithm metadata.
 15. The same simulation seed reproduces the same non-cryptographic network/failure decisions.
 16. Path markers visibly remain in transit for their path delay, independently of mix and playback delays.
@@ -2112,13 +2103,14 @@ Within every phase, treat each checklist item as a testable increment: write or 
 - [ ] Implement AES-256-GCM encryption/decryption.
 - [ ] Implement Bob public-key publication/retrieval abstraction.
 - [ ] Implement ephemeral sender key material.
-- [ ] Include sender reply public key in encrypted content.
+- [ ] Sign context, content and the designated reply public key with the device’s private Ed25519 key before encryption.
+- [ ] Verify against the expected sender’s simulated directory pin before accepting or learning a reply key.
 - [ ] Emit safe key, manifest and fragment lineage without exposing private material.
 - [ ] Ensure private keys never leave the Python engine.
 - [ ] Test successful and failed decryption.
-- [ ] Document sender-authentication limitation.
+- [ ] Document authenticated per-run participant IDs and the absence of external identity assurance.
 
-**Exit criteria:** Alice can encrypt for Bob, the simulated network carries ciphertext, Bob decrypts, and Bob can address a reply to the embedded reply public key.
+**Exit criteria:** Alice can encrypt for Bob, the simulated network carries ciphertext, Bob decrypts and verifies Alice’s signature, then signs his reply and encrypts it to the verified reply public key.
 
 ## Phase 8 — Conversation and polling workflow
 
@@ -2277,7 +2269,7 @@ These decisions should remain explicit and be isolated behind interfaces until t
 3. **DHT privacy:** exact mailbox lookup-key construction and protection against metadata correlation require a separate design.
 4. **Manifest confidentiality:** decide precisely which manifest fields are public, opaque or encrypted. Do not assume every field is hidden merely because the message payload is encrypted.
 5. **Storage redundancy:** the MVP may use replication. Erasure coding is not implied and must not be claimed unless implemented.
-6. **Sender authentication:** the embedded sender reply public key permits replies but does not authenticate the sender. No signature prerequisite is to be added to the MVP without approval.
+6. **External identity assurance:** the selected Ed25519 construction verifies messages against the expected participant’s per-run directory pin. Authenticating the directory outside the simulator, enrolling real-world identities and handling compromised keys remain open.
 7. **Application replay protection:** Sphinx replay-tag handling protects the mix packet layer; separately define message nonce/ID handling and recipient duplicate suppression.
 8. **Polling profile:** Loopix uses fixed-frequency polling and fixed-size padded responses. Select the profile parameters without changing that behaviour silently.
 9. **Adversary model:** the observer views and attacker controls need explicit capabilities. Do not claim global traffic-analysis resistance from this simulator.
@@ -2318,7 +2310,7 @@ The first complete implementation is done when:
 - [ ] Default messages and replies contain deterministic 3–10-word Lorem ipsum text.
 - [ ] Participant device cards show timestamped send/reply logs.
 - [ ] Alice can encrypt a message for Bob and Bob can decrypt it.
-- [ ] Bob can address a reply using the sender reply public key carried inside the encrypted message.
+- [ ] Bob can address a signed reply using the X25519 reply key from the successfully verified forward message.
 - [ ] The UI shows safe key/manifest/fragment lineage and never exposes the reply key as plaintext DHT/storage metadata.
 - [ ] The UI displays the event timeline and relevant message data without exposing private keys.
 - [ ] The same seed reproduces the same non-cryptographic simulation scenario.
