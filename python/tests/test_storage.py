@@ -96,3 +96,22 @@ def test_empty_payload_different_chunk_sizes_and_invalid_placement():
             stores.plan("id", b"stuff", Random(1), size, replicas)
     with pytest.raises(ValueError, match="assigned"):
         stores.get("non-member", f)
+
+
+def test_replanning_chunk_boundaries_cannot_overwrite_an_earlier_manifest():
+    stores = StorageNetwork(["a", "b"])
+    data = b"same encrypted message"
+    original = stores.plan("id", data, Random(1), 3, 2)
+    revised = stores.plan("id", data, Random(1), 5, 2)
+    assert original.id != revised.id
+    for manifest in (original, revised):
+        for f in manifest.fragments:
+            stores.put("a", f, data[f.offset : f.offset + f.size])
+    for manifest in (original, revised):
+        assert (
+            stores.reconstruct(manifest, {f.id: stores.get("a", f) for f in manifest.fragments}) == data
+        )
+    f = original.fragments[0]
+    forged = f.model_copy(update={"digest": sha256(b"xyz").hexdigest()})
+    with pytest.raises(ValueError, match="conflicts"):
+        stores.put("a", forged, b"xyz")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from hashlib import sha256
 from random import Random
@@ -104,13 +105,19 @@ class StorageNetwork:
         locations = sorted(self.nodes)
         for i, offset in enumerate(range(0, max(1, len(ciphertext)), chunk_bytes)):
             part = ciphertext[offset : offset + chunk_bytes]
+            replica_ids = tuple(rng.sample(locations, replicas))
+            part_digest = sha256(part).digest()
+            placement = json.dumps(replica_ids, separators=(",", ":")).encode()
+            identifier = sha256(
+                b"vault-fragment\x00" + scope + i.to_bytes(8, "big") + part_digest + placement
+            )
             fragment = Fragment(
-                id=sha256(b"vault-fragment\x00" + scope + i.to_bytes(8, "big")).hexdigest(),
+                id=identifier.hexdigest(),
                 index=i,
                 offset=offset,
                 size=len(part),
-                digest=sha256(part).hexdigest(),
-                replicas=tuple(rng.sample(locations, replicas)),
+                digest=part_digest.hex(),
+                replicas=replica_ids,
             )
             fragments.append(fragment)
         # A revised placement plan has its own manifest identifier.
@@ -134,6 +141,8 @@ class StorageNetwork:
         placements = self.nodes[node_id].placements
         if fragment.id not in placements:
             placements[fragment.id] = _Placement(fragment)
+        elif placements[fragment.id].fragment != fragment:
+            raise ValueError("Fragment identifier conflicts with the local descriptor")
         return placements[fragment.id]
 
     def put(self, node_id: str, fragment: Fragment, data: bytes) -> None:
