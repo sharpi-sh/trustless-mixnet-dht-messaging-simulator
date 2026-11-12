@@ -1,3 +1,4 @@
+import itertools
 from collections import Counter
 
 from app.config import Config
@@ -84,7 +85,7 @@ def test_large_encrypted_payload_uses_independent_packets_and_real_links():
             for e in sim.events
             if e.event_type == "path_transit_completed" and e.payload["token"] == token
         ]
-        assert traversed == list(zip(ordered, ordered[1:]))
+        assert traversed == list(itertools.pairwise(ordered))
         accepted = [
             e
             for e in sim.events
@@ -145,5 +146,5 @@ def test_client_loop_reaches_own_polling_inbox_and_mix_loop_returns_over_links()
         if e.event_type == "path_transit_completed" and e.payload["token"] == mix.id
     ]
     expected = ["mix-1", *mix.route.nodes]
-    assert hops == list(zip(expected, expected[1:]))
+    assert hops == list(itertools.pairwise(expected))
     assert hops[-1][1] == "mix-1"

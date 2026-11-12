@@ -50,8 +50,13 @@ class Service:
     async def wait(self, simulation_id: str, epoch: int, seq: int) -> None:
         session = self._sessions[simulation_id]
         async with session.changed:
-            await session.changed.wait_for(lambda: self._closed or self.epochs[simulation_id] != epoch
-                                           or len(session.lab.events) != seq)
+            await session.changed.wait_for(
+                lambda: (
+                    self._closed
+                    or self.epochs[simulation_id] != epoch
+                    or len(session.lab.events) != seq
+                )
+            )
 
     @staticmethod
     def _cancel_runner(session: _Session) -> None:
@@ -71,13 +76,19 @@ class Service:
             while lab.status == "running" and session.runner is asyncio.current_task():
                 async with session.changed:
                     if not lab.queue:
-                        self._failed(lab, "No steps remain before the simulation reached a terminal state")
+                        self._failed(
+                            lab, "No steps remain before the simulation reached a terminal state"
+                        )
                     else:
                         step = lab.queue[0][2]
                         lab.advance()
                         if step.state == "failed":
-                            self._failed(lab, step.result.detail if step.result and step.result.detail
-                                         else "Simulation step failed")
+                            self._failed(
+                                lab,
+                                step.result.detail
+                                if step.result and step.result.detail
+                                else "Simulation step failed",
+                            )
                     session.changed.notify_all()
                 if lab.status != "running":
                     break
@@ -91,7 +102,7 @@ class Service:
                         await asyncio.wait_for(session.speed_changed.wait(), remaining)
                     except TimeoutError:
                         break
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a runner fault must reach subscribed clients
             async with session.changed:
                 self._failed(lab, f"{type(exc).__name__}: {exc}")
                 session.changed.notify_all()
@@ -109,12 +120,18 @@ class Service:
         if cmd.type == "request_device_logs":
             if cmd.target and cmd.target not in lab.clients.people:
                 raise KeyError(cmd.target)
-            devices = ([p.device() for p in lab.clients.people.values()] if lab.initialised else
-                       lab.snapshot()["devices"])
+            devices = (
+                [p.device() for p in lab.clients.people.values()]
+                if lab.initialised
+                else lab.snapshot()["devices"]
+            )
             return {"devices": [p for p in devices if not cmd.target or p["id"] == cmd.target]}
         if cmd.type == "request_artefact_lineage":
-            return {"lineage": [row for row in lab.lineage
-                                if not cmd.target or row["message_id"] == cmd.target]}
+            return {
+                "lineage": [
+                    row for row in lab.lineage if not cmd.target or row["message_id"] == cmd.target
+                ]
+            }
         if cmd.type == "ping":
             return {"pong": True}
         return None
@@ -139,15 +156,30 @@ class Service:
             lab.edit_messages(cmd.messages)
             return
         if kind == "set_playback_delay" and cmd.delay_ms is not None:
-            action = Intervention(token=cmd.command_id, target=cmd.target, command="delay", delay_ms=cmd.delay_ms)
+            action = Intervention(
+                token=cmd.command_id, target=cmd.target, command="delay", delay_ms=cmd.delay_ms
+            )
         elif kind == "set_node_availability" and cmd.enabled is not None:
-            action = Intervention(token=cmd.command_id, target=cmd.target, command="availability", enabled=cmd.enabled)
+            action = Intervention(
+                token=cmd.command_id, target=cmd.target, command="availability", enabled=cmd.enabled
+            )
         elif kind == "set_polling_enabled" and cmd.enabled is not None:
-            action = Intervention(token=cmd.command_id, target=cmd.target, command="polling", enabled=cmd.enabled)
-        elif kind in {"block_network_path", "restore_network_path", "block_stage_boundary",
-                      "restore_stage_boundary"}:
-            action = Intervention(token=cmd.command_id, target=cmd.target, command="path" if kind.endswith("_path") else "boundary",
-                                  enabled=kind.startswith("restore"), drop_in_flight=cmd.drop_in_flight)
+            action = Intervention(
+                token=cmd.command_id, target=cmd.target, command="polling", enabled=cmd.enabled
+            )
+        elif kind in {
+            "block_network_path",
+            "restore_network_path",
+            "block_stage_boundary",
+            "restore_stage_boundary",
+        }:
+            action = Intervention(
+                token=cmd.command_id,
+                target=cmd.target,
+                command="path" if kind.endswith("_path") else "boundary",
+                enabled=kind.startswith("restore"),
+                drop_in_flight=cmd.drop_in_flight,
+            )
         else:
             raise ValueError(f"Unsupported or incomplete command {kind}")
         outcome = lab.intervene(action)

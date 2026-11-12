@@ -22,6 +22,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.mypy]
+plugins = ["pydantic.mypy"]
 files = ["app", "main.py"]
 check_untyped_defs = true
 

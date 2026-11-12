@@ -18,8 +18,8 @@ def _devices(lab: Laboratory, selected: set[str]) -> list[DeviceDTO]:
         for device in rows.values():
             device.logs = []
         for message in lab.clients.messages.values():
-            if device := rows.get(message.sender_id):
-                device.logs.append(
+            if sender := rows.get(message.sender_id):
+                sender.logs.append(
                     DeviceLog(
                         message_id=message.id,
                         conversation_id=message.conversation_id,

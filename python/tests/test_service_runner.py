@@ -30,7 +30,7 @@ def test_service_waits_for_steps_and_reset_epochs_with_exactly_once_controls():
             await service.command(lab, command(lab, "pause", "start"))
         await service.command(lab, command(lab, "pause", "pause"))
         last = len(lab.events)
-        await asyncio.sleep(.01)
+        await asyncio.sleep(0.01)
         assert len(lab.events) == last
         await service.command(lab, command(lab, "step", "step"))
         assert len(lab.events) > last and lab.status == "paused"
@@ -53,13 +53,17 @@ def test_service_reads_mutations_and_independent_runners():
         second = service.create(Config(random_seed=71))
         edit = command(lab, "set_staged_messages", "edit", messages={"msg-1": "New stage"})
         assert await service.command(lab, edit) == {"status": "ready"}
-        logs = await service.command(lab, command(lab, "request_device_logs", "read", target="sender-1"))
+        logs = await service.command(
+            lab, command(lab, "request_device_logs", "read", target="sender-1")
+        )
         assert logs["devices"][0]["logs"][0]["text"] == "New stage"
-        assert (await service.command(lab, command(lab, "request_node_details", "read", target="dht-1")))["state"]["k"] == 20
+        assert (
+            await service.command(lab, command(lab, "request_node_details", "read", target="dht-1"))
+        )["state"]["k"] == 20
         with pytest.raises(ValueError, match="simulation ID"):
             await service.command(lab, command(lab, "run", "wrong", simulation_id=second.id))
         await service.command(lab, command(lab, "run", "run"))
-        await asyncio.sleep(.005)
+        await asyncio.sleep(0.005)
         old_seq = len(lab.events)
         await service.command(lab, command(lab, "set_playback_delay", "speed", delay_ms=1))
         speed_seq = len(lab.events)
@@ -67,7 +71,9 @@ def test_service_reads_mutations_and_independent_runners():
         assert len(lab.events) > old_seq and second.status == "ready" and second.now == 0
         await service.command(lab, command(lab, "stop", "stop"))
         with pytest.raises(ValueError, match="Reset"):
-            await service.command(lab, command(lab, "set_staged_messages", "locked", messages={"msg-1": "late"}))
+            await service.command(
+                lab, command(lab, "set_staged_messages", "locked", messages={"msg-1": "late"})
+            )
         with pytest.raises(ValueError, match="different mutation"):
             await service.command(lab, command(lab, "reset", "locked"))
         waiting = asyncio.create_task(service.wait(second.id, 0, len(second.events)))

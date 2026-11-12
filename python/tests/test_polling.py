@@ -5,8 +5,16 @@ from app.polling import CELL_BYTES, MailboxItem, PollRuntime
 
 class PollLab(Engine):
     def __init__(self, **config):
-        super().__init__(Config(random_seed=83, polling_interval_ms=100, poll_batch=2,
-                                jitter_max_ms=0, ack_timeout_ms=10, **config))
+        super().__init__(
+            Config(
+                random_seed=83,
+                polling_interval_ms=100,
+                poll_batch=2,
+                jitter_max_ms=0,
+                ack_timeout_ms=10,
+                **config,
+            )
+        )
         self.polls = PollRuntime(self)
         self.items = []
         self.clients.people["sender-1"].polling_enabled = False
@@ -37,7 +45,9 @@ def test_fixed_width_empty_loop_and_payload_polls_follow_actual_tor_paths():
     lab.until("poll_empty")
     assert [item.handle for item in lab.items] == [b"x" * 20]
     assert lab.items[0].source == uid and lab.items[0].token.startswith("poll-")
-    completed = [(e.source_id, e.target_id) for e in lab.events if e.event_type == "path_transit_completed"]
+    completed = [
+        (e.source_id, e.target_id) for e in lab.events if e.event_type == "path_transit_completed"
+    ]
     tor, provider = "tor-receiver-1", "provider-east"
     assert completed[:4] == [(uid, tor), (tor, provider), (provider, tor), (tor, uid)]
     starts = [e.simulation_time_ms for e in lab.events if e.event_type == "poll_started"]

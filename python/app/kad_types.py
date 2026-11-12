@@ -83,8 +83,10 @@ class Search:
     stored: set[str] = field(default_factory=set)
 
     def nearest(self) -> list[Contact]:
-        return sorted((c for c in self.contacts.values() if c.peer not in self.silent),
-                      key=lambda c: c.node_id ^ self.key)
+        return sorted(
+            (c for c in self.contacts.values() if c.peer not in self.silent),
+            key=lambda c: c.node_id ^ self.key,
+        )
 
     def add(self, contacts: tuple[Contact, ...] | list[Contact]) -> None:
         for contact in contacts:
