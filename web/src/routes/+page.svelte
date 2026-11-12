@@ -17,7 +17,7 @@
     'connection',
   );
   let dirty = $state(false);
-  let lastId = $state('');
+  let openSetup = false;
   let uiError = $state('');
   let lab = $derived($store.snapshot);
   let senderChannel = $derived(lab?.config.sender_channel ?? 'tor');
@@ -26,7 +26,9 @@
   let connected = $derived($store.connection === 'connected');
 
   onMount(() => {
-    const port = new URLSearchParams(location.search).get('port');
+    const query = new URLSearchParams(location.search);
+    const port = query.get('port');
+    openSetup = query.get('setup') === '1';
     endpoint =
       port && /^\d+$/.test(port) && +port > 0 && +port <= 65535
         ? port
@@ -34,13 +36,6 @@
     mounted = true;
     return () => client.disconnect();
   });
-  $effect(() => {
-    if (lab && lab.simulation_id !== lastId) {
-      lastId = lab.simulation_id;
-      view = 'laboratory';
-    }
-  });
-
   async function act(fn: () => Promise<unknown>) {
     uiError = '';
     try {
@@ -60,7 +55,7 @@
     await act(async () => {
       await client.connect();
       localStorage.setItem('lab-endpoint', endpoint);
-      view = $store.snapshot ? 'laboratory' : 'configuration';
+      view = openSetup || !$store.snapshot ? 'configuration' : 'laboratory';
     });
   }
   async function create(config: Config) {
@@ -139,11 +134,25 @@
       {$store.error || uiError}
     </p>{/if}
 
-  {#if connected && !$store.messagePacedPlayback}
-    <p class="startup-hint">
-      This Python server uses the earlier playback timing. Connect to a server
-      started from the updated checkout to follow the first message on Run.
-    </p>
+  {#if connected && $store.config && (!$store.config.sender_channel || !$store.config.recipient_channel || !$store.firstDeparturePlayback)}
+    <div class="startup-hint">
+      <p>
+        Connected to {$store.http}.
+        {#if !$store.config.sender_channel || !$store.config.recipient_channel}
+          This Python backend only supports Tor for participant connections.
+        {/if}
+        {#if !$store.firstDeparturePlayback}
+          This version can show DHT startup traffic before the first message.
+        {/if}
+      </p>
+      <p>
+        Stop the older Python process, then run this from the updated repository
+        root and reconnect on port 8000.
+      </p>
+      <code
+        >.venv/bin/python python/main.py --first-port 8000 --last-port 8000</code
+      >
+    </div>
   {/if}
 
   {#if view === 'connection'}

@@ -607,6 +607,7 @@ export function makeTraceHistory() {
     lastSequence = 0,
     firstSequence = Infinity;
   let seen = new Map<string, Trace>(),
+    seenMessages = new Map<string, Trace>(),
     chosen = new Map<string, Trace>();
   return function history(key: string, rows: LabEvent[]) {
     const first = rows[0]?.sequence ?? Infinity;
@@ -621,6 +622,7 @@ export function makeTraceHistory() {
       retries.clear();
       messages = messageTrafficHistory();
       seen = new Map();
+      seenMessages = new Map();
       chosen = new Map();
     }
     // Frames can overlap, shrink or slide at a fixed length within one epoch.
@@ -663,18 +665,21 @@ export function makeTraceHistory() {
         e.target_id
       ) {
         messages.add(e);
-        seen.set(p.path_id, {
+        const observation = {
           source: e.source_id,
           target: e.target_id,
           lane,
           failed: e.event_type === 'path_transit_failed',
           at: e.simulation_time_ms,
-        });
+        } satisfies Trace;
+        seen.set(p.path_id, observation);
+        if (e.message_id) seenMessages.set(p.path_id, observation);
       }
     }
     lastSequence = Math.max(lastSequence, end);
     return {
       seen,
+      seenMessages,
       chosen,
       retries,
       legs: messages.legs,

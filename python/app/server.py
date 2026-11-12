@@ -55,6 +55,7 @@ async def local_origin(request: Request, call_next):
 
 class Health(Model):
     message_paced_playback: bool = True
+    first_departure_playback: bool = True
     status: str = "ok"
     service: str = "simulation-backend"
     api_version: str = "1"

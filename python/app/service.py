@@ -176,18 +176,19 @@ class Service:
                             )
                     frame = _message_frame(lab.events[cursor:], lab.first_message_hop_sequence)
                     background_steps = 0 if frame else background_steps + 1
-                    idle_limit = (
-                        FIRST_HOP_STEP_LIMIT
-                        if lab.first_message_hop_sequence is None
-                        else IDLE_PLAYBACK_STEPS
-                    )
-                    dwell = frame or background_steps >= idle_limit
+                    # Bootstrap, cover and empty polls keep their logical order. Before
+                    # the first payload they do not create an animation frame or a
+                    # wall-clock delay. Manual controls and failures still publish.
+                    after_departure = lab.first_message_hop_sequence is not None
+                    dwell = frame or (after_departure and background_steps >= IDLE_PLAYBACK_STEPS)
                     if dwell:
                         background_steps = 0
                     if (
                         dwell
-                        or not lab.step_delay_ms
-                        or background_steps % STREAM_BATCH_STEPS == 0
+                        or (
+                            after_departure
+                            and (not lab.step_delay_ms or background_steps % STREAM_BATCH_STEPS == 0)
+                        )
                         or lab.status != "running"
                     ):
                         session.publish()

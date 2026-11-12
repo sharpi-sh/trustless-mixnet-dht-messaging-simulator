@@ -114,9 +114,7 @@
                     {value}>{name}</option
                   >{/each}
               </select>
-            {:else}<select aria-label={label} disabled
-                ><option>Tor</option></select
-              >{/if}
+            {:else}<span>Tor only</span>{/if}
           </label>
         {/each}
         <label
