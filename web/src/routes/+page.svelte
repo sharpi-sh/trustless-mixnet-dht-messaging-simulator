@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { channelNames } from '../lib/channels';
-  import { LabClient } from '../lib/api';
+  import { replaceState } from '$app/navigation';
+  import { page } from '$app/state';
+  import { findUpdatedBackend, LabClient } from '../lib/api';
   import Configuration from '../lib/Configuration.svelte';
   import MessageEditor from '../lib/MessageEditor.svelte';
   import type { Config, CommandType } from '../lib/types';
@@ -17,7 +19,8 @@
     'connection',
   );
   let dirty = $state(false);
-  let lastId = $state('');
+  let openSetup = false;
+  let findingBackend = $state(false);
   let uiError = $state('');
   let lab = $derived($store.snapshot);
   let senderChannel = $derived(lab?.config.sender_channel ?? 'tor');
@@ -26,7 +29,9 @@
   let connected = $derived($store.connection === 'connected');
 
   onMount(() => {
-    const port = new URLSearchParams(location.search).get('port');
+    const query = new URLSearchParams(location.search);
+    const port = query.get('port');
+    openSetup = query.get('setup') === '1';
     endpoint =
       port && /^\d+$/.test(port) && +port > 0 && +port <= 65535
         ? port
@@ -34,13 +39,6 @@
     mounted = true;
     return () => client.disconnect();
   });
-  $effect(() => {
-    if (lab && lab.simulation_id !== lastId) {
-      lastId = lab.simulation_id;
-      view = 'laboratory';
-    }
-  });
-
   async function act(fn: () => Promise<unknown>) {
     uiError = '';
     try {
@@ -60,8 +58,35 @@
     await act(async () => {
       await client.connect();
       localStorage.setItem('lab-endpoint', endpoint);
-      view = $store.snapshot ? 'laboratory' : 'configuration';
+      view = openSetup || !$store.snapshot ? 'configuration' : 'laboratory';
     });
+  }
+  async function useUpdatedBackend() {
+    if (findingBackend) return;
+    findingBackend = true;
+    try {
+      await act(async () => {
+        const current = $store.http;
+        const updated = await findUpdatedBackend(current);
+        if (!connected || $store.http !== current) return;
+        view = 'connection';
+        endpoint = updated;
+        tested = '';
+        await client.test(updated);
+        tested = updated;
+        await client.connect();
+        localStorage.setItem('lab-endpoint', updated);
+        const url = new URL(location.href);
+        url.searchParams.set('port', new URL(updated).port);
+        url.searchParams.set('setup', '1');
+        replaceState(url, page.state);
+        openSetup = true;
+        dirty = false;
+        view = 'configuration';
+      });
+    } finally {
+      findingBackend = false;
+    }
   }
   async function create(config: Config) {
     await client.create(config);
@@ -139,11 +164,23 @@
       {$store.error || uiError}
     </p>{/if}
 
-  {#if connected && !$store.messagePacedPlayback}
-    <p class="startup-hint">
-      This Python server uses the earlier playback timing. Connect to a server
-      started from the updated checkout to follow the first message on Run.
-    </p>
+  {#if connected && $store.config && (!$store.config.sender_channel || !$store.config.recipient_channel || !$store.firstDeparturePlayback)}
+    <div class="startup-hint">
+      <p>
+        Connected to {$store.http}.
+        {#if !$store.config.sender_channel || !$store.config.recipient_channel}
+          This Python backend only supports Tor for participant connections.
+        {/if}
+        {#if !$store.firstDeparturePlayback}
+          This version can show DHT startup traffic before the first message.
+        {/if}
+      </p>
+      <button disabled={findingBackend} onclick={useUpdatedBackend}>
+        {findingBackend
+          ? 'Finding an updated backend…'
+          : 'Find and connect to updated backend'}
+      </button>
+    </div>
   {/if}
 
   {#if view === 'connection'}
