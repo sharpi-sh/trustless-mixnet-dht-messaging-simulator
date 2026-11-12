@@ -81,8 +81,14 @@ test('Bob records empty timed polls before Alice sends any packets', async ({
     .getByRole('button', { name: 'Step to first message hop', exact: true })
     .click();
   await expect(status).toContainText(/Last request \d+ ms · Empty at \d+ ms/);
+  await expect
+    .poll(async () => (await backend.state(id)).status)
+    .toBe('paused');
   const snapshot = await backend.state(id);
-  expect(snapshot.status).toBe('paused');
+  const emptyAt = Number(
+    (await status.innerText()).match(/Empty at (\d+) ms/)![1],
+  );
+  expect(emptyAt).toBeLessThanOrEqual(snapshot.simulation_time_ms);
   expect(
     snapshot.devices
       .find((d) => d.id === 'receiver-1')
