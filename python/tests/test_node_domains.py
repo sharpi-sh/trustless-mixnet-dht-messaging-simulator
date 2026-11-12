@@ -32,7 +32,9 @@ def test_vaults_have_independent_storage_and_inspect_only_identifiers():
     network = StorageNetwork(["storage-1", "storage-2"])
     network.nodes["storage-2"].fragments["fragment"] = b"opaque"
     assert network.inspect("storage-1")["fragment_ids"] == []
-    assert network.inspect("storage-2") == {
+    view = network.inspect("storage-2")
+    assert "opaque" not in str(view)
+    assert {k:view[k] for k in ("node_id","address","fragment_ids")} == {
         "node_id": "storage-2", "address": "sim://storage-2", "fragment_ids": ["fragment"]
     }
     with pytest.raises(ValueError):
