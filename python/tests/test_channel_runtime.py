@@ -90,7 +90,7 @@ def test_channels_carry_signed_messages_polls_lookups_and_vault_responses(sender
         retrieval = [
             e for e in starts if e.message_id == msg.id and channel.id in (e.source_id, e.target_id)
         ]
-        gateway = lab.topology.mixnet.providers[int(owner.role == "receiver")]
+        gateway = lab.topology.provider_for(owner.id)
         assert not any(
             uid.startswith(("storage-", "dht-"))
             for event in retrieval
@@ -125,7 +125,7 @@ def test_unstarted_external_path_does_not_claim_the_remote_peer_saw_a_packet():
     sim = Engine(config("direct", "tor"))
     sim.lifecycle("run")
     source = "direct-sender-1"
-    target = "provider-west"
+    target = sim.topology.provider_for("sender-1")
     path = sim.topology.paths[sim.topology.path_id(source, target)]
     sim.intervene(Intervention(command="path", token="reject", target=path.id, enabled=False))
     sim.transit(source, target, Action(), Action(), token="blocked")

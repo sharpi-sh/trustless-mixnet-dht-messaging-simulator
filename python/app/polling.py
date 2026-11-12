@@ -76,11 +76,7 @@ class PollRuntime:
         if not self._enabled(uid):
             return
         person = sim.clients.people[uid]
-        provider = next(
-            p
-            for p in sim.topology.mixnet.providers
-            if sim.topology.path_id(person.tor.id, p) in sim.topology.paths
-        )
+        provider = sim.topology.provider_for(uid)
         self._serial += 1
         token = f"poll-{self._serial}"
         pull = _Pull(token, (uid, person.tor.id, provider, person.tor.id, uid))

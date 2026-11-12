@@ -20,7 +20,7 @@ That is not the preferred privacy deployment. A machine hosting several roles be
 
 **Meaning:** anyone meeting the network’s admission rules could operate a client provider. Clients would select providers without relying on one central list and could recover when a provider disappears.
 
-**Current state:** West and East are fixed client providers. A separate fixed service gateway handles anonymous DHT and vault reads. Mailbox handles are not replicated between client providers.
+**Current state:** three fixed West-side providers serve senders through seeded, stable per-client assignments, while one fixed East-side provider serves recipients. A separate fixed service gateway handles anonymous DHT and vault reads. Mailbox handles are not replicated between client providers, and provider failure does not trigger client failover.
 
 **Production work:** add signed provider records, authenticated addresses and keys, capacity information, expiry, client-side selection, replicated encrypted mailbox state, duplicate suppression and recovery. A conventional load balancer only spreads requests within one operator; it does not provide decentralisation. Replication improves availability but gives more providers an opportunity to compare timing.
 

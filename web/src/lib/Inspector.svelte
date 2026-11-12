@@ -159,10 +159,13 @@
       </p>
     {/if}
     {#if node.kind === 'provider'}<p>
-        {node.id === 'provider-west'
-          ? 'West serves the sender devices.'
-          : 'East serves the recipient devices.'} The names indicate diagram positions.
-        Each side has one provider, so an outage interrupts that side until recovery.
+        {node.id.startsWith('provider-west')
+          ? 'This West provider serves its assigned sender devices.'
+          : node.id === 'provider-east'
+            ? 'East serves the recipient devices.'
+            : 'The anonymous service gateway terminates mixed DHT and vault requests.'}
+        The names indicate diagram positions. Provider mailbox pools are not replicated,
+        so an outage interrupts assigned devices until recovery.
       </p>{/if}
     <dl class="facts">
       {@render datum('Node ID', node.id, true)}{@render datum(

@@ -29,7 +29,7 @@ class Laboratory(StorageSimulation):
     def __init__(self, config: Config, simulation_id: str | None = None):
         super().__init__(config, simulation_id)
         self.first_message_hop_sequence: int | None = None
-        self.devices = DeviceProtocol(self.clients)
+        self.devices = DeviceProtocol(self.clients, self.topology.provider_by_person)
         self.polls = PollRuntime(self)
         self.mailbox = MailboxRuntime(self)
         self.outcomes = {uid: "staged" for uid in self.clients.messages}

@@ -41,15 +41,16 @@ def deliver(network: LoopixTraffic, packet: Packet):
 
 
 @pytest.mark.parametrize(
-    "direction,source,target,first,last",
+    "direction,source,target",
     [
-        ("forward", "sender-1", "receiver-1", "provider-west", "provider-east"),
-        ("reply", "receiver-1", "sender-1", "provider-east", "provider-west"),
+        ("forward", "sender-1", "receiver-1"),
+        ("reply", "receiver-1", "sender-1"),
     ],
 )
-def test_payload_peels_and_queues_each_hop(direction, source, target, first, last):
+def test_payload_peels_and_queues_each_hop(direction, source, target):
     network = traffic()
     packet = network.build_packet("payload", source, target, b"sealed application envelope", direction)
+    first, last = network.topology.provider_for(source), network.topology.provider_for(target)
     assert packet.first_node == first and packet.route.nodes[-1] == last
     assert deliver(network, packet).payload == b"sealed application envelope"
     assert packet.status == "completed"
@@ -73,7 +74,7 @@ def test_clocks_are_independent_and_empty_payload_ticks_become_drop_cover():
 def test_client_loops_return_to_origin_provider_and_mix_loops_begin_on_adjacent_path():
     network = traffic()
     client = network.fire("client_loop", "sender-1")
-    assert client.first_node == client.route.nodes[-1] == "provider-west"
+    assert client.first_node == client.route.nodes[-1] == network.topology.provider_for("sender-1")
     assert client.target_id == client.source_id
     assert not deliver(network, client).drop
     mix = network.fire("mix_loop", "mix-3")

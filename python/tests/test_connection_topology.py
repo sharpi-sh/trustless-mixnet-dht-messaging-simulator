@@ -14,10 +14,11 @@ def test_per_side_channel_endpoints_and_ip_views_are_published_in_both_direction
     nodes = {n.id: n for n in state.topology.nodes}
     paths = {p.id: p for p in state.topology.paths}
     assert len(nodes) == len(snapshot(Laboratory(Config(random_seed=42)), 0).topology.nodes)
-    for person, kind, provider, stage in (
-        ("sender-1", sender, "provider-west", "Sender connection"),
-        ("receiver-1", recipient, "provider-east", "Recipient connection"),
+    for person, kind, stage in (
+        ("sender-1", sender, "Sender connection"),
+        ("receiver-1", recipient, "Recipient connection"),
     ):
+        provider = lab.topology.provider_for(person)
         device = next(d for d in state.devices if d.id == person)
         endpoint = nodes[f"{kind}-{person}"]
         assert (device.channel, device.channel_id, device.tor_id) == (kind, endpoint.id, endpoint.id)

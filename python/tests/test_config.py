@@ -34,4 +34,5 @@ def test_default_timing_dimensions():
         config.base_transit_delay_ms,
         config.mu_per_second,
         config.polling_interval_ms,
-    ) == (500, 250, 1, 2000)
+        config.dht_nodes,
+    ) == (500, 250, 1, 2000, 3)
