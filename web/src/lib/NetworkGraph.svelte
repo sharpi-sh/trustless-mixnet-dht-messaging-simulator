@@ -430,6 +430,9 @@
           </p>
         {/if}
       </div>
+      {#if runtimeControls}
+        <div class="runtime-controls">{@render runtimeControls()}</div>
+      {/if}
       <div class="tools">
         <label
           ><input type="checkbox" bind:checked={showAll} /> All transports</label
@@ -478,9 +481,6 @@
         >
       </div>
     </div>
-    {#if runtimeControls}
-      <div class="runtime-controls">{@render runtimeControls()}</div>
-    {/if}
   </header>
   <div class="diagram-layout">
     {#key lab.simulation_id + '/' + lab.epoch + '/' + sender?.id}
@@ -1023,7 +1023,6 @@
       border-left: 0;
     }
   }
-  .graph-head,
   .tools,
   .zoom,
   .legend,
@@ -1032,10 +1031,16 @@
     align-items: center;
   }
   .graph-head {
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(13rem, auto) minmax(30rem, 1fr) auto;
+    align-items: start;
     gap: 12px;
     padding: 15px 18px;
     border-bottom: 1px solid #dfe6e1;
+  }
+  .runtime-controls {
+    min-width: 0;
+    align-self: center;
   }
   h2 {
     font-size: 18px;
@@ -1055,6 +1060,7 @@
   }
   .tools {
     gap: 14px;
+    justify-self: end;
   }
   .tools label {
     font-size: 12px;
@@ -1443,10 +1449,26 @@
     padding: 0 17px 10px;
     margin: 0;
   }
+  @media (max-width: 1100px) {
+    .graph-head {
+      grid-template-columns: minmax(13rem, 1fr) auto;
+    }
+    .runtime-controls {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
   @media (max-width: 650px) {
     .graph-head {
-      flex-wrap: wrap;
+      grid-template-columns: minmax(0, 1fr);
       padding: 12px;
+    }
+    .runtime-controls,
+    .tools {
+      grid-column: 1;
+    }
+    .tools {
+      justify-self: start;
     }
     .tools {
       gap: 9px;

@@ -214,8 +214,7 @@
     min-width: 0;
     width: 100%;
     box-sizing: border-box;
-    padding: 0.65rem 0.85rem;
-    border-top: 1px solid var(--border, #c9d1cc);
+    padding: 0;
     color: var(--text, #1c2b24);
     background: var(--panel, #fff);
     font-size: 0.84rem;
@@ -243,10 +242,20 @@
   }
   .controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    grid-template-columns: repeat(4, minmax(8.5rem, 1fr));
     align-items: start;
     gap: 0.65rem 0.85rem;
     margin-top: 0.5rem;
+  }
+  @media (max-width: 1400px) {
+    .controls {
+      grid-template-columns: repeat(2, minmax(10rem, 1fr));
+    }
+  }
+  @media (max-width: 650px) {
+    .controls {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .unit {
     min-width: 0;
