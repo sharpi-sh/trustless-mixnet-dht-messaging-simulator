@@ -50,3 +50,13 @@ Final verification on development:
 - Confirm Graphify is current.
 - Report commits, merges, exact test results, coverage and unresolved protocol decisions.
 - Leave development as the complete verified one-shot build branch.
+
+## Build objective and evidence
+
+Establish the complete one-shot build as an active objective before implementation. Keep the objective active through feature integration and final verification on `development`. Mark it complete once the definition of done has been verified and the HTML build report is available.
+
+Record the build start time and maintain a chronological milestone log. For each milestone, capture its start and finish, elapsed time, feature branch, implementation and verification commits, merge commit and outcome. Record the role and scope of each sub-agent, the work it delivered and how that work was verified. Distinguish concurrent work from sequential work when calculating elapsed time.
+
+Retain the commands, exit statuses and output from unit, integration, frontend, end-to-end, linting, type-checking and coverage runs. Include material failures, their corrections and the successful reruns. Identify any timing reconstructed from Git history and any verification that could not be completed.
+
+At handover, provide a standalone HTML build report under `docs/reports/`. Include the milestone timeline, total wall-clock duration, sub-agent contributions, recorded test output and coverage, final acceptance results, Graphify status and outstanding protocol decisions. Link the report from the final response.
