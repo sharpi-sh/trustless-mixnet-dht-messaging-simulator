@@ -73,6 +73,21 @@ def test_per_side_channel_endpoints_and_ip_views_are_published_in_both_direction
             )
 
 
+def test_vaults_use_a_dedicated_post_mix_service_gateway_not_west_or_east():
+    lab = Laboratory(Config(random_seed=19))
+    paths = lab.topology.paths
+    service_provider = lab.topology.mixnet.service_providers[0]
+    assert service_provider not in lab.topology.mixnet.providers
+    for vault in lab.topology.storage_ids:
+        assert lab.topology.service_gateways[vault] == service_provider
+        assert lab.topology.path_id(service_provider, vault) in paths
+        for client_provider in lab.topology.mixnet.providers:
+            assert lab.topology.path_id(client_provider, vault) not in paths
+    for layer in (lab.topology.mixnet.layers[0], lab.topology.mixnet.layers[-1]):
+        for mix in layer:
+            assert lab.topology.path_id(service_provider, mix) in paths
+
+
 def test_default_channel_ids_and_mix_peer_visibility():
     lab = Laboratory(Config(random_seed=9))
     assert lab.config.sender_channel == lab.config.recipient_channel == "tor"

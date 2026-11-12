@@ -153,6 +153,7 @@ class GlobalObserver:
 class Mixnet:
     layers: list[list[str]] = field(default_factory=lambda: [[], [], []])
     providers: tuple[str, str] = ("provider-west", "provider-east")
+    service_providers: tuple[str, ...] = ("provider-service",)
 
 
 class Topology:
@@ -196,6 +197,14 @@ class Topology:
                 2 + 4 * idx,
                 ["West provider", "East provider"][idx],
             )
+        for provider in self.mixnet.service_providers:
+            self.add_node(
+                provider,
+                "Anonymous service gateway",
+                "provider",
+                6,
+                "Service gateway",
+            )
         count = (
             rng.randint(config.min_nodes, config.max_nodes)
             if config.randomise_count
@@ -212,10 +221,16 @@ class Topology:
             for a in left:
                 for b in right:
                     self.connect(a, b, "Loopix datagram")
+        # Service gateways are independent egress/ingress providers. They attach to
+        # both ends of the layered mixnet so retrieval requests and SURB replies
+        # never reuse a participant-facing West/East provider as a vault endpoint.
+        for provider in self.mixnet.service_providers:
+            for mix in [*self.mixnet.layers[0], *self.mixnet.layers[-1]]:
+                self.connect(provider, mix, "Loopix service datagram")
         self.dht_ids = [f"dht-{i + 1}" for i in range(config.dht_nodes)]
         self.storage_ids = [f"storage-{i + 1}" for i in range(config.storage_nodes)]
         self.service_gateways = {
-            uid: self.mixnet.providers[i % len(self.mixnet.providers)]
+            uid: self.mixnet.service_providers[i % len(self.mixnet.service_providers)]
             for ids in (self.dht_ids, self.storage_ids)
             for i, uid in enumerate(ids)
         }
@@ -225,9 +240,14 @@ class Topology:
                 self.connect(dht, peer, "Kademlia RPC")
             for provider in self.mixnet.providers:
                 self.connect(provider, dht, "opaque application handoff")
+            self.connect(
+                self.service_gateways[dht], dht, "post-mix anonymous DHT service delivery"
+            )
         for i, store in enumerate(self.storage_ids):
             self.add_node(store, f"Vault {i + 1}", "storage", 8, "Vault")
-            self.connect(self.service_gateways[store], store, "anonymous retrieval service attachment")
+            self.connect(
+                self.service_gateways[store], store, "post-mix anonymous vault service delivery"
+            )
             for dht in self.dht_ids:
                 self.connect(dht, store, "encrypted fragment transfer")
         for person in people.people.values():
