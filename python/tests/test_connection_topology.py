@@ -7,7 +7,7 @@ from app.lab import Laboratory
 from app.stream import snapshot
 
 
-@pytest.mark.parametrize("sender,recipient", product(("tor", "shadowsocks", "direct"), repeat=2))
+@pytest.mark.parametrize("sender,recipient", list(product(("tor", "shadowsocks", "direct"), repeat=2)))
 def test_per_side_channel_endpoints_and_ip_views_are_published_in_both_directions(sender, recipient):
     lab = Laboratory(Config(random_seed=42, sender_channel=sender, recipient_channel=recipient))
     state = snapshot(lab, 0)

@@ -10,7 +10,6 @@ from pydantic import Field
 from .config import ChannelKind, Config, Model
 from .participants import People
 
-
 _CHANNEL_LABEL: dict[ChannelKind, str] = {
     "tor": "Tor abstraction",
     "shadowsocks": "Shadowsocks proxy",
