@@ -310,9 +310,8 @@ npm run dev</code
       </div>
       {#if lab.first_message_hop_sequence === null}
         <p id="first-message-help" class="startup-hint">
-          Bootstrap and cover traffic can precede the sender’s first payload
-          clock tick. Step to first message hop runs those actions and pauses at
-          the device’s first message departure.
+          Run follows the message from its first hop to Tor. Choose Step to
+          first message hop to pause at departure.
           {#if lab.status === 'paused' && $store.events.at(-1)?.event_type === 'first_message_hop_step_finished'}
             The step limit was reached. Use the control again to continue.
           {/if}
