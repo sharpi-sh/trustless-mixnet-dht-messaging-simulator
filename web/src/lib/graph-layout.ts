@@ -430,7 +430,7 @@ function messageTrafficHistory() {
         const i = offsets.size;
         offsets.set(
           leg.messageId,
-          (i % 2 === 0 ? -1 : 1) * 27 * (1 - Math.exp(-Math.ceil(i / 2) / 4)),
+          (i % 2 === 0 ? -1 : 1) * 10 * Math.ceil(i / 2),
         );
       }
       track = {

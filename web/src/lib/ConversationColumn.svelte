@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { chatRows, logicalStamp } from './conversation';
   import { messageColour } from './graph-layout';
   import type { Device, Message } from './types';
@@ -22,7 +23,7 @@
   const names = $derived(new Map(devices.map((d) => [d.id, d.label])));
   const plans = $derived(new Map(messages.map((m) => [m.id, m])));
   const conversations = $derived.by(() => {
-    const peers = new Map<string, string>();
+    const peers = new SvelteMap<string, string>();
     for (const m of messages) {
       if (m.sender_id === person?.id) peers.set(m.conversation_id, m.target_id);
       else if (m.target_id === person?.id)
