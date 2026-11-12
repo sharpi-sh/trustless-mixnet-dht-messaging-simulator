@@ -42,28 +42,36 @@
   let screenButton: HTMLButtonElement;
   let expanded = $state(false),
     autoFit = $state(true);
-  async function toggleScreen() {
-    if (expanded) {
-      if (document.fullscreenElement === panel) await document.exitFullscreen();
-      expanded = false;
-      screenButton.focus({ preventScroll: true });
-      return;
-    }
-    expanded = true;
-    try {
-      await panel.requestFullscreen?.();
-    } catch {
-      /* The expanded viewport also works when native fullscreen is unavailable. */
-    }
+  function toggleScreen() {
+    expanded = !expanded;
+    if (!expanded) screenButton.focus({ preventScroll: true });
   }
-  function changedScreen() {
-    expanded = document.fullscreenElement === panel;
-    if (!expanded) screenButton?.focus({ preventScroll: true });
-  }
+  $effect(() => {
+    if (!expanded) return;
+    // Keep keyboard navigation in the diagram while it covers the workspace.
+    const background: HTMLElement[] = [];
+    let branch: HTMLElement | null = panel;
+    while (branch && branch !== document.body && branch.parentElement) {
+      for (const sibling of branch.parentElement.children) {
+        if (
+          sibling instanceof HTMLElement &&
+          sibling !== branch &&
+          !sibling.inert
+        ) {
+          sibling.inert = true;
+          background.push(sibling);
+        }
+      }
+      branch = branch.parentElement;
+    }
+    return () => {
+      for (const sibling of background) sibling.inert = false;
+    };
+  });
   function screenKey(e: KeyboardEvent) {
     if (expanded && e.key === 'Escape') {
       e.preventDefault();
-      void toggleScreen();
+      toggleScreen();
     }
   }
   let zoom = $state(1),
@@ -374,7 +382,6 @@
 </script>
 
 <svelte:window onkeydown={screenKey} />
-<svelte:document onfullscreenchange={changedScreen} />
 <section
   class="network-panel"
   class:expanded
