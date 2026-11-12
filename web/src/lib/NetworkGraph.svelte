@@ -6,7 +6,6 @@
     NodeDetails,
     Path,
     DeviceLog,
-    Direction,
   } from './types';
   import {
     layoutTopology,
@@ -14,6 +13,7 @@
     onCurve,
     transitFraction,
     contactIds,
+    makeTraceHistory,
   } from './graph-layout';
   import GraphGlyph from './GraphGlyph.svelte';
   let {
@@ -60,78 +60,7 @@
       0,
     ),
   );
-  const edgeId = (a: string, b: string) => [a, b].sort().join('~');
-  type Trace = {
-    source: string;
-    target: string;
-    lane: Direction;
-    failed: boolean;
-    at: number;
-  };
-  let plannedPacket: string | undefined;
-  let epochKey = '',
-    last = 0;
-  let seen = new Map<string, Trace>(),
-    chosen = new Map<string, Trace>();
-  function history(key: string, rows: LabEvent[]) {
-    if (epochKey !== key || rows.length < last) {
-      epochKey = key;
-      last = 0;
-      plannedPacket = undefined;
-      seen = new Map();
-      chosen = new Map();
-    }
-    for (let i = last; i < rows.length; i++) {
-      const e = rows[i],
-        p = e.payload;
-      const lane = p.lane === 'reply' ? 'reply' : 'forward';
-      if (
-        e.event_type === 'mixnet_route_constructed' &&
-        e.message_id &&
-        typeof p.packet_id === 'string' &&
-        Array.isArray(p.ordered_route)
-      ) {
-        plannedPacket = p.packet_id;
-        chosen = new Map();
-        const ids = p.ordered_route.filter(
-          (n): n is string => typeof n === 'string',
-        );
-        for (let j = 1; j < ids.length; j++)
-          chosen.set(edgeId(ids[j - 1], ids[j]), {
-            source: ids[j - 1],
-            target: ids[j],
-            lane,
-            failed: false,
-            at: e.simulation_time_ms,
-          });
-      }
-      if (
-        plannedPacket &&
-        p.packet_id === plannedPacket &&
-        (e.event_type === 'message_forward_failed' ||
-          (e.event_type === 'sphinx_layer_processed' && p.next_id === null))
-      ) {
-        chosen = new Map();
-        plannedPacket = undefined;
-      }
-      if (
-        e.event_type.startsWith('path_transit_') &&
-        typeof p.path_id === 'string' &&
-        e.source_id &&
-        e.target_id
-      ) {
-        seen.set(p.path_id, {
-          source: e.source_id,
-          target: e.target_id,
-          lane,
-          failed: e.event_type === 'path_transit_failed',
-          at: e.simulation_time_ms,
-        });
-      }
-    }
-    last = rows.length;
-    return { seen, chosen };
-  }
+  const history = makeTraceHistory();
   let traces = $derived(history(lab.simulation_id + ':' + lab.epoch, events));
   let edges = $derived.by(() =>
     lab.topology.paths
@@ -544,7 +473,9 @@
               height={g.h - 71}
             >
               <div class="device-log" aria-label={device.label + ' device log'}>
-                {#each device.logs as log}<div class="logrow">
+                {#each device.logs as log (log.message_id + '/' + log.state + '/' + log.simulation_time_ms)}<div
+                    class="logrow"
+                  >
                     <b>{logLabel(log)}</b><time
                       title={log.simulation_time_ms + ' ms'}
                       >{stamp(log.simulation_time_ms)}</time

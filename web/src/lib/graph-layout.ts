@@ -8,7 +8,7 @@ import {
   path as d3path,
   type SimulationNodeDatum,
 } from 'd3';
-import type { Direction, LabNode, NodeDetails, Path } from './types';
+import type { Direction, LabEvent, LabNode, NodeDetails, Path } from './types';
 
 export interface GraphNode extends SimulationNodeDatum {
   id: string;
@@ -78,7 +78,7 @@ export function layoutTopology(nodes: LabNode[], paths: Path[]): GraphLayout {
       const cx = x + 14 + p.w / 2 + (i % p.cols) * (p.w + 11);
       const cy =
         68 +
-        (body - p.extent) / 2 +
+        Math.min(70, (body - p.extent) / 2) +
         p.h / 2 +
         Math.floor(i / p.cols) * (p.h + 15);
       points.push({ id: n.id, x: cx, y: cy, cx, cy, w: p.w, h: p.h });
@@ -206,4 +206,79 @@ export function contactIds(
     for (const id of Object.keys(details.node.adjacent_peers ?? {}))
       ids.add(id);
   return ids;
+}
+
+export function makeTraceHistory() {
+  const edgeId = (a: string, b: string) => [a, b].sort().join('~');
+  type Trace = {
+    source: string;
+    target: string;
+    lane: Direction;
+    failed: boolean;
+    at: number;
+  };
+  let plannedPacket: string | undefined;
+  let epochKey = '',
+    last = 0;
+  let seen = new Map<string, Trace>(),
+    chosen = new Map<string, Trace>();
+  return function history(key: string, rows: LabEvent[]) {
+    if (epochKey !== key || rows.length < last) {
+      epochKey = key;
+      last = 0;
+      plannedPacket = undefined;
+      seen = new Map();
+      chosen = new Map();
+    }
+    for (let i = last; i < rows.length; i++) {
+      const e = rows[i],
+        p = e.payload;
+      const lane = p.lane === 'reply' ? 'reply' : 'forward';
+      if (
+        e.event_type === 'mixnet_route_constructed' &&
+        e.message_id &&
+        typeof p.packet_id === 'string' &&
+        Array.isArray(p.ordered_route)
+      ) {
+        plannedPacket = p.packet_id;
+        chosen = new Map();
+        const ids = p.ordered_route.filter(
+          (n): n is string => typeof n === 'string',
+        );
+        for (let j = 1; j < ids.length; j++)
+          chosen.set(edgeId(ids[j - 1], ids[j]), {
+            source: ids[j - 1],
+            target: ids[j],
+            lane,
+            failed: false,
+            at: e.simulation_time_ms,
+          });
+      }
+      if (
+        plannedPacket &&
+        p.packet_id === plannedPacket &&
+        (e.event_type === 'message_forward_failed' ||
+          (e.event_type === 'sphinx_layer_processed' && p.next_id === null))
+      ) {
+        chosen = new Map();
+        plannedPacket = undefined;
+      }
+      if (
+        e.event_type.startsWith('path_transit_') &&
+        typeof p.path_id === 'string' &&
+        e.source_id &&
+        e.target_id
+      ) {
+        seen.set(p.path_id, {
+          source: e.source_id,
+          target: e.target_id,
+          lane,
+          failed: e.event_type === 'path_transit_failed',
+          at: e.simulation_time_ms,
+        });
+      }
+    }
+    last = rows.length;
+    return { seen, chosen };
+  };
 }

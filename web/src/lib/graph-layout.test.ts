@@ -56,6 +56,7 @@ test('keeps stage order and card bounds stable under changing node and path stat
   ];
   const layout = layoutTopology(nodes, paths);
   expect(layout.nodes.size).toBe(nodes.length);
+  expect(layout.nodes.get('alice')!.y).toBeLessThan(210);
   expect(layout.stages.map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   for (const n of nodes) {
     const p = layout.nodes.get(n.id)!,

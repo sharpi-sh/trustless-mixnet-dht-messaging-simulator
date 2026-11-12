@@ -52,7 +52,7 @@
       : [],
   );
   let tabId = $props.id();
-  let metadata: HTMLDetailsElement;
+  let metadataOpen = $state(false);
   function highlight(id: string) {
     if (!node) return;
     const actual = peerPath(connected, node.id, id);
@@ -133,7 +133,7 @@
         {info.profile.name}
         <a
           href={'#' + tabId + '-algorithm'}
-          onclick={() => (metadata.open = true)}
+          onclick={() => (metadataOpen = true)}
           ><code>{info.profile.id}</code></a
         >
       </p>{/if}
@@ -439,10 +439,12 @@
       {/if}
     </div>
     {#if info}
-      <details id={tabId + '-algorithm'} bind:this={metadata}>
+      <details id={tabId + '-algorithm'} bind:open={metadataOpen}>
         <summary>Algorithm and parameters</summary>
         <p><b>{info.profile.name}</b></p>
         {#if info.profile.reference}<p>
+            <!-- The registry supplies the external paper URL, outside the SvelteKit router. -->
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
             <a href={info.profile.reference} target="_blank" rel="noreferrer"
               >Reference paper ({info.profile.year})</a
             >
