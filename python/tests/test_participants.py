@@ -35,8 +35,20 @@ def test_each_participant_owns_independent_key_tor_and_log():
     )
     assert bob.device()["logs"] == []
     public = alice.device()
-    assert set(public) == {"id", "label", "role", "tor_id", "fingerprint", "polling_enabled", "logs"}
+    assert set(public) == {
+        "id",
+        "label",
+        "role",
+        "tor_id",
+        "fingerprint",
+        "signing_fingerprint",
+        "polling_enabled",
+        "logs",
+    }
     assert "Only on Alice's device" in json.dumps(public)
+    assert alice.signing_public_key not in {alice.public_key, bob.signing_public_key}
+    assert alice.signing_fingerprint == sha256(alice.signing_public_key).hexdigest()
+    assert alice.signing_private_key.private_bytes_raw().hex() not in json.dumps(public)
     assert alice.private_key.private_bytes_raw().hex() not in json.dumps(public)
 
 

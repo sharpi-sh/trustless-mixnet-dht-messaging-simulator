@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SignatureReceipt from './SignatureReceipt.svelte';
   import type { Snapshot, NodeDetails, LabEvent, Json } from './types';
   import { display, time, fields, rows, peerPath, relevant } from './inspector';
   let {
@@ -22,7 +23,7 @@
   } = $props();
   const components = {
     person:
-      'A simulated handset or computer running the messaging client. It holds the device’s private key, encrypts outgoing text and decrypts incoming messages. The enclosed public key lets the recipient encrypt a reply. Messages carry no sender signature, so the recipient cannot verify who supplied that key.',
+      'A simulated handset or computer running the messaging client. It encrypts outgoing messages and decrypts received messages. The enclosed public key lets the recipient encrypt a reply.',
     tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
     provider:
       'A simulated server running a Loopix provider. It accepts Sphinx packets from its clients, forwards them to the first mix layer, and holds mailbox handles for periodic collection. At egress it hands the encrypted bundle to the storage gateway.',
@@ -137,6 +138,13 @@
       >
     </header>
     <p>{components[node.kind]}</p>
+    {#if device?.signing_fingerprint}
+      <p>
+        This device signs outgoing messages with Ed25519. The recipient checks
+        the signature against the simulated directory’s key for the expected
+        sender before accepting the message and reply key.
+      </p>
+    {/if}
     {#if node.kind === 'provider'}<p>
         {node.id === 'provider-west'
           ? 'West serves the sender devices.'
@@ -413,8 +421,12 @@
           {:else if device}
             <dl class="facts">
               {@render datum(
-                'Public key fingerprint',
+                'X25519 encryption key fingerprint',
                 device.fingerprint,
+                true,
+              )}{@render datum(
+                'Ed25519 signing key fingerprint',
+                device.signing_fingerprint ?? 'Not reported',
                 true,
               )}{@render datum('Polling enabled', device.polling_enabled)}
             </dl>
@@ -432,6 +444,7 @@
                     <b>{row.state} · {row.message_id}</b><small
                       >{row.conversation_id} · {row.direction}</small
                     >{#if row.text}<p>{row.text}</p>{/if}
+                    <SignatureReceipt {row} />
                   </div>
                 </li>{:else}<li class="empty">
                   No device activity recorded.

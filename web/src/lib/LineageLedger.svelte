@@ -51,8 +51,11 @@
     </div>{:else}<p class="records-empty">
       No cryptographic operations recorded for this message.
     </p>{/if}
-  <p class="record-note">
-    The recipient learns the encrypted reply key after decryption. Its ownership
-    remains unverified.
-  </p>
+  {#if rows.some((row) => row.operation === 'sender_signature_verified')}
+    <p class="record-note">The recipient verified the sender’s signature.</p>
+  {:else if rows.some((row) => row.operation === 'reply_key_learned')}
+    <p class="record-note">
+      A reply key was recorded without sender verification evidence.
+    </p>
+  {/if}
 </section>

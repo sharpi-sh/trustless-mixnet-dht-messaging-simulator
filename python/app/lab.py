@@ -1,4 +1,4 @@
-"""One laboratory run. Only a successfully decrypted forward message unlocks its reply."""
+"""One laboratory run. Only an authenticated, decrypted message unlocks its successor."""
 
 from __future__ import annotations
 
@@ -158,11 +158,19 @@ class Laboratory(StorageSimulation):
             ctx,
             origin="simulated public webpage"
             if msg.direction == "forward"
-            else "decrypted unverified reply key",
+            else "authenticated reply key from signed bundle",
             fingerprint=fingerprint,
         )
         digest = sha256(wire[32:]).hexdigest()
         self.emit("reply_key_encapsulated", ctx, container=digest, field="encrypted reply public key")
+        self.emit(
+            "message_signed",
+            ctx,
+            signer_id=msg.sender_id,
+            signing_fingerprint=self.clients.people[msg.sender_id].signing_fingerprint,
+            algorithm="Ed25519",
+            container=digest,
+        )
         self.emit(
             "message_encrypted",
             ctx,
@@ -180,12 +188,14 @@ class Laboratory(StorageSimulation):
         msg = self.clients.messages[action.message_id]
         if self.outcomes[msg.id] in {"received", "failed", "skipped"}:
             return
+        if action.target != msg.target_id:
+            self.failure(msg.id, "Reconstructed bundle delivered to an unexpected recipient")
+            return
         if not self.clients.people[msg.target_id].polling_enabled:
             self.deferred[msg.id] = action
             return
         if not self.device_available(msg.target_id, action):
             return
-        self.devices.log(msg, msg.target_id, "delivered", self.now, "")
         try:
             learned = self.devices.accept(msg, action.ciphertext, self.now)
         except ValueError as exc:
@@ -196,8 +206,25 @@ class Laboratory(StorageSimulation):
         ctx = Action(source=msg.target_id, message_id=msg.id, lane=msg.direction)
         digest = sha256(action.ciphertext).hexdigest()
         self.emit("message_decrypted", ctx, container=digest, integrity="verified")
+        signing_fingerprint = sha256(
+            self.devices.published[msg.sender_id].signing_public_key
+        ).hexdigest()
         self.emit(
-            "reply_key_learned", ctx, fingerprint=learned, container=digest, authentication="unverified"
+            "sender_signature_verified",
+            ctx,
+            signer_id=msg.sender_id,
+            signing_fingerprint=signing_fingerprint,
+            algorithm="Ed25519",
+            container=digest,
+        )
+        self.emit(
+            "reply_key_learned",
+            ctx,
+            fingerprint=learned,
+            container=digest,
+            authentication="authenticated",
+            signer_id=msg.sender_id,
+            signing_fingerprint=signing_fingerprint,
         )
         self.emit("device_log_updated", ctx, person_id=msg.target_id, state="received")
         self.outcomes[msg.id] = "received"

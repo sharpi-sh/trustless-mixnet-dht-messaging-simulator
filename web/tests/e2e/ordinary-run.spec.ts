@@ -29,6 +29,23 @@ for (const seed of [null, '2046379413032268']) {
       const sender =
         '[data-message-id="msg-1"][data-source="sender-1"][data-target="tor-sender-1"]';
       const firstMarker = '[data-transit-id]' + sender;
+      const next =
+        '[data-message-id="msg-1"][data-source="tor-sender-1"][data-target="provider-west"]';
+      // Record the transient second marker even when Playwright resumes after its arrival.
+      await page.evaluate((selector) => {
+        const graph = document.querySelector(
+          'svg[aria-label="Network topology"]',
+        )!;
+        const observer = new MutationObserver(() => {
+          const marker = graph.querySelector<SVGGElement>(selector);
+          if (marker?.dataset.transitId) {
+            (window as Window & { secondTransitId?: string }).secondTransitId =
+              marker.dataset.transitId;
+            observer.disconnect();
+          }
+        });
+        observer.observe(graph, { childList: true, subtree: true });
+      }, '[data-transit-id]' + next);
       // Sample before clicking Run so the first real departure cannot be missed.
       const motion = page.evaluate(
         (selector) =>
@@ -86,10 +103,17 @@ for (const seed of [null, '2046379413032268']) {
         movement.distance,
         JSON.stringify(movement),
       ).toBeGreaterThanOrEqual(2);
-      const next =
-        '[data-message-id="msg-1"][data-source="tor-sender-1"][data-target="provider-west"]';
-      const nextMarker = page.locator('[data-transit-id]' + next);
-      await nextMarker.waitFor({ state: 'attached', timeout: 30_000 });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () =>
+                (window as Window & { secondTransitId?: string })
+                  .secondTransitId,
+            ),
+          { timeout: 30_000 },
+        )
+        .toMatch(/^transit-/);
       const first = page.locator('[data-message-path]' + sender);
       const dot = first.locator('[data-history-leg="' + movement.id + '"]');
       await expect(first).toHaveAttribute('data-leg-status', 'completed');
@@ -120,8 +144,10 @@ for (const seed of [null, '2046379413032268']) {
 
       const before = connections;
       await page.evaluate(() => {
-        const socket = (window as Window & { simulationSocket: WebSocket })
+        const socket = (window as Window & { simulationSocket?: WebSocket })
           .simulationSocket;
+        if (!socket)
+          throw new Error('The simulation WebSocket was not captured');
         socket.close(4001, 'Reconnect during route inspection');
       });
       await expect

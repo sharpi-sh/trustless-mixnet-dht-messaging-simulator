@@ -83,10 +83,20 @@ def profiles(c: Config) -> list[Profile]:
         Profile(
             id="device",
             name="Participant device",
-            parameters={"encryption": "X25519 / HKDF-SHA-256 / AES-256-GCM"},
-            operations=["Recipient encryption", "Local decryption"],
+            reference="https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1",
+            parameters={
+                "encryption": "X25519 / HKDF-SHA-256 / AES-256-GCM",
+                "signature": "Ed25519",
+                "verification_key_source": "Per-run simulated directory pin for the expected sender ID",
+            },
+            operations=[
+                "Sign message context, text and reply key",
+                "Encrypt signed bundle for recipient",
+                "Decrypt and verify against the expected sender pin before accepting",
+            ],
             boundaries=[
-                "The reply public key is unverified. Sender authentication, whole-system forward secrecy and anonymity remain unproven."
+                "Sender verification relies on the simulator's trusted binding between participant ID and signing key.",
+                "External identity assurance, whole-system forward secrecy and anonymity remain outside the model.",
             ],
         ),
     ]

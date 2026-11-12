@@ -6,6 +6,7 @@ from itertools import product
 from random import Random
 from typing import Literal
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import Field, field_validator
 
@@ -82,6 +83,8 @@ class DeviceLog(Model):
     state: DeliveryState
     simulation_time_ms: int = Field(ge=0)
     text: str
+    verified_signer_id: str | None = None
+    signing_fingerprint: str | None = None
 
 
 @dataclass(slots=True)
@@ -106,6 +109,9 @@ class Person:
     tor: TorNetwork
     polling_enabled: bool
     private_key: X25519PrivateKey = field(default_factory=X25519PrivateKey.generate, repr=False)
+    signing_private_key: Ed25519PrivateKey = field(
+        default_factory=Ed25519PrivateKey.generate, repr=False
+    )
     logs: list[DeviceLog] = field(default_factory=list, repr=False)
 
     @property
@@ -116,6 +122,14 @@ class Person:
     def fingerprint(self) -> str:
         return sha256(self.public_key).hexdigest()
 
+    @property
+    def signing_public_key(self) -> bytes:
+        return self.signing_private_key.public_key().public_bytes_raw()
+
+    @property
+    def signing_fingerprint(self) -> str:
+        return sha256(self.signing_public_key).hexdigest()
+
     def device(self) -> dict[str, object]:
         return {
             "id": self.id,
@@ -123,6 +137,7 @@ class Person:
             "role": self.role,
             "tor_id": self.tor.id,
             "fingerprint": self.fingerprint,
+            "signing_fingerprint": self.signing_fingerprint,
             "polling_enabled": self.polling_enabled,
             "logs": [entry.model_dump(mode="json") for entry in self.logs],
         }

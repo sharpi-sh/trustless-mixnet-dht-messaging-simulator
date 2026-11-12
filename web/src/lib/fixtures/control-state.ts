@@ -478,11 +478,21 @@ export const snapshot: Snapshot = {
       id: 'device',
       name: 'Participant device',
       year: null,
-      reference: null,
-      parameters: { encryption: 'X25519 / HKDF-SHA-256 / AES-256-GCM' },
-      operations: ['Recipient encryption', 'Local decryption'],
+      reference: 'https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1',
+      parameters: {
+        encryption: 'X25519 / HKDF-SHA-256 / AES-256-GCM',
+        signature: 'Ed25519',
+        verification_key_source:
+          'Per-run simulated directory pin for the expected sender ID',
+      },
+      operations: [
+        'Sign message context, text and reply key',
+        'Encrypt signed bundle for recipient',
+        'Decrypt and verify against the expected sender pin before accepting',
+      ],
       boundaries: [
-        'The reply public key is unverified. Sender authentication, whole-system forward secrecy and anonymity remain unproven.',
+        "Sender verification relies on the simulator's trusted binding between participant ID and signing key.",
+        'External identity assurance, whole-system forward secrecy and anonymity remain outside the model.',
       ],
     },
   ],
@@ -517,6 +527,8 @@ export const snapshot: Snapshot = {
       tor_id: 'tor-receiver-1',
       fingerprint:
         '8fff92aebe9d63d9fd9589fce242b7355432cf175b24428d14ab72b90d47567c',
+      signing_fingerprint:
+        'd2ea39cb5020041281b1c6d9ea3d33b53824b023e0b610411ddc341823f605d8',
       polling_enabled: false,
       logs: [
         {
@@ -536,6 +548,8 @@ export const snapshot: Snapshot = {
       tor_id: 'tor-receiver-2',
       fingerprint:
         '73fd71a6cf9c4f29b265d2aa4c23ddf98549d23d82f3c24c76e4a3e919160bda',
+      signing_fingerprint:
+        'b1d998843c9acdd998364d8861be31c92cdf268995f2073cfa525d9acf062996',
       polling_enabled: true,
       logs: [],
     },
@@ -821,11 +835,21 @@ export const details: Record<string, NodeDetails> = {
       id: 'device',
       name: 'Participant device',
       year: null,
-      reference: null,
-      parameters: { encryption: 'X25519 / HKDF-SHA-256 / AES-256-GCM' },
-      operations: ['Recipient encryption', 'Local decryption'],
+      reference: 'https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1',
+      parameters: {
+        encryption: 'X25519 / HKDF-SHA-256 / AES-256-GCM',
+        signature: 'Ed25519',
+        verification_key_source:
+          'Per-run simulated directory pin for the expected sender ID',
+      },
+      operations: [
+        'Sign message context, text and reply key',
+        'Encrypt signed bundle for recipient',
+        'Decrypt and verify against the expected sender pin before accepting',
+      ],
       boundaries: [
-        'The reply public key is unverified. Sender authentication, whole-system forward secrecy and anonymity remain unproven.',
+        "Sender verification relies on the simulator's trusted binding between participant ID and signing key.",
+        'External identity assurance, whole-system forward secrecy and anonymity remain outside the model.',
       ],
     },
     state: {
@@ -837,6 +861,8 @@ export const details: Record<string, NodeDetails> = {
       tor_id: 'tor-receiver-1',
       fingerprint:
         '8fff92aebe9d63d9fd9589fce242b7355432cf175b24428d14ab72b90d47567c',
+      signing_fingerprint:
+        'd2ea39cb5020041281b1c6d9ea3d33b53824b023e0b610411ddc341823f605d8',
       polling_enabled: false,
       logs: [],
     },

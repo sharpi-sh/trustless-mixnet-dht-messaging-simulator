@@ -58,7 +58,9 @@ function categoryMatch(
     case 'Polling':
       return name.includes('poll');
     case 'Encryption/decryption':
-      return /encrypt|decrypt|key_|manifest_|reconstructed/.test(name);
+      return /encrypt|decrypt|key_|manifest_|reconstructed|message_signed|sender_signature/.test(
+        name,
+      );
     case 'Failures/retries':
       return (
         /fail|timeout|retry|rejected|error|dropped/.test(name) ||

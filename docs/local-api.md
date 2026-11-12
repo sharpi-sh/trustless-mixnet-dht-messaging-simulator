@@ -18,4 +18,6 @@ The Python process prints its bound HTTP and WebSocket URLs. A health read or a 
 
 Connect to `/ws`, then send a `subscribe` command with the simulation ID and a unique command ID. The initial response includes a snapshot and recent events. Subsequent deltas contain the updated clock, changed objects and event records. Reconnect using the last epoch and sequence. Reset starts a new epoch. The service holds scenarios in process memory.
 
+A successfully verified receipt in the recipient’s device log contains `verified_signer_id` and `signing_fingerprint`. The latter is the SHA-256 digest of the pinned Ed25519 public key. The lineage events `message_signed` and `sender_signature_verified` expose the signer ID and fingerprint. Private keys, signature bytes and message text stay out of network telemetry.
+
 Every simulation decision runs in Python. A UI may interpolate a position between the current clock and the next scheduled logical step. Only Python can complete or fail a transit. Interactive request schemas are available at the bound service’s `/docs`.

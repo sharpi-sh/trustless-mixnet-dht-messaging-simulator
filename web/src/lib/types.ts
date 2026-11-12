@@ -105,6 +105,8 @@ export interface DeviceLog {
   conversation_id: string;
   direction: Direction;
   state: 'staged' | 'sent' | 'delivered' | 'received' | 'replied' | 'failed';
+  verified_signer_id?: string | null;
+  signing_fingerprint?: string | null;
   simulation_time_ms: number;
   text: string;
 }
@@ -114,6 +116,7 @@ export interface Device {
   role: 'sender' | 'receiver';
   tor_id: string;
   fingerprint: string;
+  signing_fingerprint?: string | null;
   polling_enabled: boolean;
   logs: DeviceLog[];
 }
