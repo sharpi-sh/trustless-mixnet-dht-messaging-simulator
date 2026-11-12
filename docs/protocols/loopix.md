@@ -28,6 +28,8 @@ An extension for independent operators would need a directory of signed provider
 
 After polling its provider for a handle, the reading device sends manifest and fragment requests through its access channel, provider and three mix layers. The service receives the request through its own provider. The request carries single-use reply blocks (SURBs) prepared by the reader. Each block contains a precomputed encrypted Sphinx header, a first hop and a key for inserting the reply payload. The reader retains the private material needed to recover that payload. The service can send back an encrypted manifest page or fragment without learning the reader’s network address from the block. Reusing the same reply packet at a mix triggers replay detection. The application-level signed reply is a separate message.
 
+Each retry prepares fresh reply blocks. The reader requests manifest pages and can use several blocks for a fragment that spans multiple cells. Blocks expire on the simulation clock. Their validity window and the per-run mix keys are local modelling choices. This retrieval feature does not implement Nym’s network-wide key epochs or its gateway acknowledgement protocol.
+
 The DHT still performs ordinary Kademlia peer discovery and storage still uses replica identifiers. The vault can recognise repeated reads. The providers see adjacent connections, traffic volumes and timing. The local laboratory deliberately exposes a cross-hop trace for inspection. The experiment uses local Sphinx parameters and its own mailbox protocol. Wire compatibility with Nym, Nym’s infrastructure and protection against traffic correlation are outside its scope. [Nym whitepaper, section 4.5](https://nymtech.net/nym-whitepaper.pdf#page=15)
 
 
