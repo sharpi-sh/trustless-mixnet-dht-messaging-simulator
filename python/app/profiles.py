@@ -15,6 +15,50 @@ class Profile(Model):
     boundaries: list[str]
 
 
+def _channel_profiles(c: Config) -> list[Profile]:
+    selected = {c.sender_channel, c.recipient_channel}
+    channels = []
+    if "tor" in selected:
+        channels.append(
+            Profile(
+                id="tor-abstraction",
+                name="Tor abstraction",
+                reference="https://community.torproject.org/relay/types-of-relays/",
+                parameters={"ingress": "Guard IP", "egress": "Distinct exit IP"},
+                operations=["Device to guard", "Exit to destination"],
+                boundaries=[
+                    "The guard and exit have distinct simulated addresses. Circuit construction, internal relays and onion encryption are outside the model."
+                ],
+            )
+        )
+    if "shadowsocks" in selected:
+        channels.append(
+            Profile(
+                id="shadowsocks-abstraction",
+                name="Shadowsocks proxy abstraction",
+                reference="https://shadowsocks.org/doc/what-is-shadowsocks.html",
+                parameters={"ingress": "Proxy server IP", "egress": "Same proxy server IP"},
+                operations=["Device to proxy", "Proxy to destination"],
+                boundaries=[
+                    "One simulated proxy can observe its client and destination. Wire encryption, protocol negotiation and actual proxy traffic are outside the model."
+                ],
+            )
+        )
+    if "direct" in selected:
+        channels.append(
+            Profile(
+                id="direct-connection",
+                name="Direct connection",
+                parameters={"ingress": "Device IP", "egress": "Same device IP"},
+                operations=["Local interface handoff", "Device to destination"],
+                boundaries=[
+                    "The interface shares the device’s simulated IP. Downstream peers can observe that address."
+                ],
+            )
+        )
+    return channels
+
+
 def profiles(c: Config) -> list[Profile]:
     return [
         Profile(
@@ -62,15 +106,7 @@ def profiles(c: Config) -> list[Profile]:
                 "Simulated RPC transport and clock. Mailbox records are an experimental application format."
             ],
         ),
-        Profile(
-            id="tor-abstraction",
-            name="Tor abstraction",
-            parameters={},
-            operations=["Local entry and egress"],
-            boundaries=[
-                "One independent boundary per device; circuits and relays are outside this model."
-            ],
-        ),
+        *_channel_profiles(c),
         Profile(
             id="replicated-storage",
             name="Replicated chunk-storage model",

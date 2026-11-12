@@ -7,17 +7,35 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .config import Config, Model
+from .config import ChannelKind, Config, Model
 from .participants import People
+
+
+_CHANNEL_LABEL: dict[ChannelKind, str] = {
+    "tor": "Tor abstraction",
+    "shadowsocks": "Shadowsocks proxy",
+    "direct": "Direct interface",
+}
+_CHANNEL_ENTRY: dict[ChannelKind, str] = {
+    "tor": "Tor guard connection",
+    "shadowsocks": "Shadowsocks client to proxy",
+    "direct": "Local interface handoff",
+}
+_CHANNEL_EGRESS: dict[ChannelKind, str] = {
+    "tor": "Tor exit",
+    "shadowsocks": "Shadowsocks proxy",
+    "direct": "Direct connection",
+}
 
 
 class Node(Model):
     id: str
     label: str
-    kind: Literal["person", "tor", "provider", "mix", "dht", "storage"]
+    kind: Literal["person", "tor", "shadowsocks", "direct", "provider", "mix", "dht", "storage"]
     stage_index: int
     stage: str
     simulated_address: str
+    egress_address: str | None = None
     operator_id: str
     online: bool = True
     history: list[tuple[int, bool]] = Field(default_factory=list)
@@ -43,12 +61,73 @@ class ProviderNode(Node):
     pass
 
 
+class IPHop(Model):
+    source_ip: str
+    destination_ip: str
+    observed_source_ip: str
+    observer: str
+    description: str
+    local: bool
+
+    @classmethod
+    def from_nodes(cls, source: Node, target: Node, local: bool) -> "IPHop":
+        # A channel faces the device on its ingress address and peers on its egress.
+        source_ip = (
+            source.simulated_address
+            if target.kind == "person"
+            else source.egress_address or source.simulated_address
+        )
+        destination_ip = (
+            target.simulated_address
+            if source.kind == "person"
+            else target.egress_address or target.simulated_address
+        )
+        if local:
+            description = (
+                "The direct interface shares its device’s address. This handoff stays on the device."
+            )
+        elif target.kind == "tor":
+            description = (
+                "The Tor guard sees the device’s IP address."
+                if source.kind == "person"
+                else "The Tor exit receives a response from the remote peer’s IP address."
+            )
+        elif target.kind == "shadowsocks":
+            description = (
+                "The Shadowsocks server sees the device’s IP address."
+                if source.kind == "person"
+                else "The Shadowsocks server receives a response from the remote peer’s IP address."
+            )
+        elif source.kind == "tor":
+            description = (
+                "The device sees its Tor guard’s IP address."
+                if target.kind == "person"
+                else "The destination sees the Tor exit’s IP address."
+            )
+        elif source.kind == "shadowsocks":
+            description = "The receiving peer sees the Shadowsocks server’s IP address."
+        elif source.kind == "direct":
+            description = "The destination sees the device’s own IP address."
+        else:
+            description = "The receiving peer sees the immediate sender’s IP address."
+        return cls(
+            source_ip=source_ip,
+            destination_ip=destination_ip,
+            observed_source_ip=source_ip,
+            observer=target.id,
+            description=description,
+            local=local,
+        )
+
+
 class NetworkPath(Model):
     id: str
     source_id: str
     target_id: str
     boundary: str
     transport_label: str
+    ip_hops: dict[str, IPHop]
+    local: bool
     base_transit_delay_ms: int
     jitter_min_ms: int
     jitter_max_ms: int
@@ -83,23 +162,33 @@ class Topology:
         self.nodes: dict[str, Node] = {}
         self.paths: dict[str, NetworkPath] = {}
         self.mixnet = Mixnet()
+        self.channel_ids = {uid: person.tor.id for uid, person in people.people.items()}
         for person in people.people.values():
             sender = person.role == "sender"
-            self.add_node(
+            device = self.add_node(
                 person.id,
                 person.label,
                 "person",
                 0 if sender else 10,
                 "Sender" if sender else "Recipient",
             )
-            self.add_node(
+            kind = person.tor.kind
+            channel = self.add_node(
                 person.tor.id,
-                "Tor abstraction",
-                "tor",
+                _CHANNEL_LABEL[kind],
+                kind,
                 1 if sender else 9,
-                "Sender Tor" if sender else "Recipient Tor",
+                "Sender connection" if sender else "Recipient connection",
             )
-            self.connect(person.id, person.tor.id, "local/TCP abstraction")
+            if kind == "direct":
+                channel.simulated_address = device.simulated_address
+                channel.operator_id = device.operator_id
+            channel.egress_address = (
+                channel.simulated_address.replace("10.77.", "10.78.", 1)
+                if kind == "tor"
+                else channel.simulated_address
+            )
+            self.connect(person.id, channel.id, _CHANNEL_ENTRY[kind])
         for idx, provider in enumerate(self.mixnet.providers):
             self.add_node(
                 provider,
@@ -138,7 +227,9 @@ class Topology:
                 self.connect(dht, store, "encrypted fragment transfer")
         for person in people.people.values():
             provider = self.mixnet.providers[int(person.role == "receiver")]
-            self.connect(person.tor.id, provider, "Tor egress → Loopix provider")
+            self.connect(
+                person.tor.id, provider, f"{_CHANNEL_EGRESS[person.tor.kind]} → Loopix provider"
+            )
             for dht in self.dht_ids:
                 self.connect(person.tor.id, dht, "opaque mailbox lookup")
             for storage in self.storage_ids:
@@ -166,15 +257,21 @@ class Topology:
     def connect(self, a: str, b: str, label: str) -> None:
         uid = self.path_id(a, b)
         left, right = sorted([self.nodes[a], self.nodes[b]], key=lambda n: (n.stage_index, n.id))
+        local = {left.kind, right.kind} == {"person", "direct"}
         self.paths[uid] = NetworkPath(
             id=uid,
             source_id=left.id,
             target_id=right.id,
             boundary=f"{left.stage} ↔ {right.stage}",
             transport_label=label,
-            base_transit_delay_ms=self.config.base_transit_delay_ms,
-            jitter_min_ms=self.config.jitter_min_ms,
-            jitter_max_ms=self.config.jitter_max_ms,
+            ip_hops={
+                left.id: IPHop.from_nodes(left, right, local),
+                right.id: IPHop.from_nodes(right, left, local),
+            },
+            local=local,
+            base_transit_delay_ms=0 if local else self.config.base_transit_delay_ms,
+            jitter_min_ms=0 if local else self.config.jitter_min_ms,
+            jitter_max_ms=0 if local else self.config.jitter_max_ms,
         )
         for node, peer in [(left, right), (right, left)]:
             if isinstance(node, MixNode):

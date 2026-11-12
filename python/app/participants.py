@@ -1,4 +1,4 @@
-"""Participant-owned identities, Tor boundaries and editable conversation plans."""
+"""Participant-owned identities, connection channels and editable conversation plans."""
 
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import Field, field_validator
 
-from app.config import Config, Model
+from app.config import ChannelKind, Config, Model
 
 Role = Literal["sender", "receiver"]
 Direction = Literal["forward", "reply"]
@@ -88,11 +88,12 @@ class DeviceLog(Model):
 
 
 @dataclass(slots=True)
-class TorNetwork:
+class DeviceConnection:
     id: str
     owner_id: str
     entry_count: int = 0
     exit_count: int = 0
+    kind: ChannelKind = "tor"
 
     def enter(self) -> None:
         self.entry_count += 1
@@ -101,12 +102,16 @@ class TorNetwork:
         self.exit_count += 1
 
 
+# Historical name for callers constructing a default Tor connection.
+TorNetwork = DeviceConnection
+
+
 @dataclass(slots=True)
 class Person:
     id: str
     label: str
     role: Role
-    tor: TorNetwork
+    tor: DeviceConnection
     polling_enabled: bool
     private_key: X25519PrivateKey = field(default_factory=X25519PrivateKey.generate, repr=False)
     signing_private_key: Ed25519PrivateKey = field(
@@ -135,6 +140,8 @@ class Person:
             "id": self.id,
             "label": self.label,
             "role": self.role,
+            "channel": self.tor.kind,
+            "channel_id": self.tor.id,
             "tor_id": self.tor.id,
             "fingerprint": self.fingerprint,
             "signing_fingerprint": self.signing_fingerprint,
@@ -179,7 +186,8 @@ class People:
             polling = role == "sender" or config.polling_overrides.get(
                 person_id, config.polling_enabled
             )
-            tor = TorNetwork(id=f"tor-{person_id}", owner_id=person_id)
+            kind = config.sender_channel if role == "sender" else config.recipient_channel
+            tor = DeviceConnection(id=f"{kind}-{person_id}", owner_id=person_id, kind=kind)
             self.people[person_id] = Person(person_id, _NAMES[role][index], role, tor, polling)
             ids.append(person_id)
         return ids

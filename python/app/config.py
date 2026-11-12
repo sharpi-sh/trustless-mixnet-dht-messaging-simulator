@@ -5,6 +5,9 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+ChannelKind = Literal["tor", "shadowsocks", "direct"]
+
+
 class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -18,6 +21,8 @@ class Outage(Model):
 class Config(Model):
     sender_count: int = Field(1, ge=1, le=10)
     receiver_count: int = Field(1, ge=1, le=10)
+    sender_channel: ChannelKind = "tor"
+    recipient_channel: ChannelKind = "tor"
     min_nodes: int = Field(15, ge=10, le=20)
     max_nodes: int = Field(15, ge=10, le=20)
     randomise_count: bool = False

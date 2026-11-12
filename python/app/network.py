@@ -28,6 +28,8 @@ class NetworkSimulation(Engine):
         profile = {
             "person": "device",
             "tor": "tor-abstraction",
+            "shadowsocks": "shadowsocks-abstraction",
+            "direct": "direct-connection",
             "mix": "loopix-usenix-2017",
             "provider": "loopix-usenix-2017",
             "dht": "kademlia-2002",
@@ -76,9 +78,14 @@ class NetworkSimulation(Engine):
             state.update(self.dht.inspect(uid, self.now))
         elif node.kind == "storage":
             state.update(self.storage.inspect(uid))
-        elif node.kind == "tor":
-            tor = next(p.tor for p in self.clients.people.values() if p.tor.id == uid)
-            state.update(owner=tor.owner_id, entries=tor.entry_count, exits=tor.exit_count)
+        elif node.kind in {"tor", "shadowsocks", "direct"}:
+            connection = next(p.tor for p in self.clients.people.values() if p.tor.id == uid)
+            state.update(
+                owner=connection.owner_id,
+                entries=connection.entry_count,
+                exits=connection.exit_count,
+                channel=connection.kind,
+            )
         elif node.kind == "person":
             state.update(self.clients.people[uid].device())
             state["outbound_queue"] += len(self.packets.outbox[uid])
