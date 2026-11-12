@@ -95,23 +95,23 @@ Every arrow represents a Python-owned `NetworkPath` with its own logical transit
 - **D3/SVG visualisation:** topology, actual routes, alternatives, failures, retries and node state.
 - **Cryptography layer:** maintained Python primitives for recipient confidentiality, ciphertext integrity, key agreement and reply-key handling.
 
-The implementation specification is in [`.agents/instructions/distributed-messaging-simulator-implementation.md`](.agents/instructions/distributed-messaging-simulator-implementation.md). The repository currently contains the specification and project documentation; application scaffolding and dependencies will be added during implementation.
+The implementation specification is in [`.agents/instructions/distributed-messaging-simulator-implementation.md`](.agents/instructions/distributed-messaging-simulator-implementation.md).
 
 ## Prerequisites
 
-The planned implementation requires:
+Local development requires:
 
-- Python 3.12 or a compatible version declared by `python/pyproject.toml`;
-- Node.js 20 LTS or a compatible version declared by `web/package.json`;
+- Python 3.11 or newer;
+- Node.js 22.17+ (22.x) or 24+;
 - npm;
 - two local terminal sessions;
 - a modern browser with WebSocket and SVG support.
 
-Exact Python and JavaScript dependencies will be installed from the committed lock and project files once those files exist. Expected core dependencies include FastAPI and Uvicorn for the Python service, and SvelteKit, Vite and D3 for the web client.
+The Python package declares the service dependencies. The web client uses the committed npm lockfile.
 
 ## Installation
 
-After the implementation files have been added:
+From the repository root:
 
 ```bash
 python -m venv .venv
@@ -119,10 +119,10 @@ source .venv/bin/activate
 python -m pip install -e "./python[dev]"
 
 cd web
-npm install
+npm ci
 ```
 
-Use the final commands and version constraints recorded in the project files if they differ from this provisional setup.
+
 
 ## Running the simulator
 
