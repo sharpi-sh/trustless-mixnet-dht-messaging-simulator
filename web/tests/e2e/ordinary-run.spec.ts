@@ -120,8 +120,10 @@ for (const seed of [null, '2046379413032268']) {
 
       const before = connections;
       await page.evaluate(() => {
-        const socket = (window as Window & { simulationSocket: WebSocket })
+        const socket = (window as Window & { simulationSocket?: WebSocket })
           .simulationSocket;
+        if (!socket)
+          throw new Error('The simulation WebSocket was not captured');
         socket.close(4001, 'Reconnect during route inspection');
       });
       await expect
