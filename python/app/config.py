@@ -34,7 +34,7 @@ class Config(Model):
     random_seed: int | None = Field(None, ge=0, le=2**53 - 1)
     polling_enabled: bool = True
     polling_overrides: dict[str, bool] = Field(default_factory=dict)
-    polling_interval_ms: int = Field(15000, ge=100, le=600000)
+    polling_interval_ms: int = Field(2000, ge=100, le=600000)
     poll_batch: int = Field(3, ge=1, le=16)
     base_transit_delay_ms: int = Field(250, ge=0, le=60000)
     jitter_min_ms: int = Field(0, ge=0, le=60000)

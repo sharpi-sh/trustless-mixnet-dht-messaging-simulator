@@ -47,6 +47,7 @@ sequenceDiagram
     participant L2 as Loopix layer 2
     participant L3 as Loopix layer 3
     participant EP as Egress provider
+    participant SG as Anonymous service gateway
     participant D as Kademlia DHT
     participant V as Encrypted vaults
     participant BT as Bob Tor abstraction
@@ -71,9 +72,15 @@ sequenceDiagram
         EP->>L1: Forward request through three mix layers
         L1->>L2: Peel and delay
         L2->>L3: Peel and delay
-        Note over L3,V: Service provider delivers to DHT gateway or selected vault
-        Note over D,V: Service puts response in the supplied reply blocks
-        Note over L1,L3: Each reply follows its precomputed return route through all three layers
+        L3->>SG: Deliver to independent service gateway
+        SG->>D: Deliver manifest request, when required
+        SG->>V: Deliver fragment request, when required
+        D-->>SG: Put manifest response in a reply block
+        V-->>SG: Put fragment response in a reply block
+        SG->>L1: Start the precomputed return route
+        L1->>L2: Peel and delay reply
+        L2->>L3: Peel and delay reply
+        L3->>EP: Return to Bob's provider
         EP-->>BT: Deliver to Bob's channel
     end
     BT-->>B: Reconstruct and decrypt
@@ -97,9 +104,15 @@ sequenceDiagram
         IP->>L1: Forward request through three mix layers
         L1->>L2: Peel and delay
         L2->>L3: Peel and delay
-        Note over L3,V: Service provider delivers to DHT gateway or selected vault
-        Note over D,V: Service puts response in the supplied reply blocks
-        Note over L1,L3: Each reply follows its precomputed return route through all three layers
+        L3->>SG: Deliver to independent service gateway
+        SG->>D: Deliver manifest request, when required
+        SG->>V: Deliver fragment request, when required
+        D-->>SG: Put manifest response in a reply block
+        V-->>SG: Put fragment response in a reply block
+        SG->>L1: Start the precomputed return route
+        L1->>L2: Peel and delay reply
+        L2->>L3: Peel and delay reply
+        L3->>IP: Return to Alice's provider
         IP-->>AT: Deliver to Alice's channel
     end
     AT-->>A: Reconstruct, decrypt and verify Bob's reply
@@ -169,12 +182,13 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 - [Loopix routing and provider discovery](docs/protocols/loopix.md)
 - [Kademlia, bootstrap recovery and replicated storage](docs/protocols/kademlia.md)
 - [Application encryption, sender verification and visibility](docs/protocols/application-envelope.md)
+- [Production roadmap and deployment gaps](docs/production-roadmap.md)
 - [Sphinx implementation, upstream pin, compatibility fixtures and licence](python/app/sphinx_ref/NOTICE.md)
 - [One-shot build report and test output](docs/reports/build.html)
 
 ## Operating the laboratory
 
-**Configuration** groups the sender, receiver and mix counts. Choose the sender and recipient connection channels independently, along with pairing, exchanges, polling, outage pattern and seed. Advanced settings control transport, cover traffic, DHT, storage and retries. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
+**Configuration** groups the sender, receiver and mix counts. Choose the sender and recipient connection channels independently, along with pairing, exchanges, polling, outage pattern and seed. The small information controls beside fields explain each setting in plain language. Advanced settings control transport, cover traffic, DHT, storage and retries. Receiver polling defaults to every 2,000 simulated milliseconds. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
 
 **Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. At startup, Run processes DHT bootstrap, polling and cover traffic without pausing on those steps. The first animated message leaves its sender when the Python send clock fires. The timeline retains the intervening events. **Step to first message hop** processes bootstrap and cover events until a device starts sending its first message over a remote link, then pauses with the packet in transit. The playback slider accepts 0 ms to remove the wall-clock wait; logical transit and mixing delays still apply. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
 
@@ -207,4 +221,3 @@ npm run coverage
 npm run build
 npm run e2e
 ```
-

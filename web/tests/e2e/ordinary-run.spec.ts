@@ -26,6 +26,10 @@ for (const seed of [null, '2046379413032268']) {
       if (seed) {
         await page.getByLabel('Mix nodes', { exact: true }).fill('15');
         await page.getByLabel('Random seed', { exact: true }).fill(seed);
+        await page.getByText('Advanced settings', { exact: true }).click();
+        await page
+          .getByLabel('Polling interval (ms)', { exact: true })
+          .fill('15000');
       }
       const id = await createSimulation(page, backend);
       const sender =
