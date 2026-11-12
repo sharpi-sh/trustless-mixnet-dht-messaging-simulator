@@ -79,7 +79,7 @@
   <fieldset disabled={busy || submitting} class="shell">
     <section>
       <h2>Network setup</h2>
-      {#each ['sender', 'recipient'] as role}
+      {#each ['sender', 'recipient'] as role (role)}
         {@const isSender = role === 'sender'}
         {@const ids = isSender ? senders : receivers}
         {@const countKey = isSender ? 'sender_count' : 'receiver_count'}
@@ -128,7 +128,7 @@
               {isSender ? 'Sender channel' : 'Recipient channel'}
               {#if cfg[channelKey]}
                 <select bind:value={cfg[channelKey]}>
-                  {#each Object.entries(channelNames) as [value, label]}
+                  {#each Object.entries(channelNames) as [value, label] (value)}
                     <option {value}>{label}</option>
                   {/each}
                 </select>
