@@ -11,6 +11,27 @@ type Backend = {
 
 export const test = base.extend<{ backend: Backend }>({
   backend: async ({ request }, use) => {
+    const connectBackend = (url: string) =>
+      use({
+        url,
+        state: async (id: string) => {
+          const response = await request.get(
+            url + '/api/simulations/' + encodeURIComponent(id),
+          );
+          expect(response.ok()).toBe(true);
+          return response.json();
+        },
+      });
+    const external = process.env.SIM_ACCEPTANCE_BACKEND;
+    if (external) {
+      const endpoint = new URL(external);
+      if (!['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname))
+        throw new Error(
+          'Browser acceptance requires a loopback simulation service.',
+        );
+      await connectBackend(endpoint.origin);
+      return;
+    }
     const root = fileURLToPath(new URL('../../../', import.meta.url));
     // Python binds port zero itself and prints the socket's assigned port.
     const child = spawn(
@@ -58,16 +79,7 @@ export const test = base.extend<{ backend: Backend }>({
         throw new Error(
           `Python backend failed to start. ${failure}\n${output}`,
         );
-      await use({
-        url,
-        state: async (id: string) => {
-          const response = await request.get(
-            `${url}/api/simulations/${encodeURIComponent(id)}`,
-          );
-          expect(response.ok()).toBe(true);
-          return response.json();
-        },
-      });
+      await connectBackend(url);
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGTERM');

@@ -150,4 +150,45 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 
 ## Documentation
 
-User-facing guides belong in `docs/`. Agent implementation specifications and instructions belong in `.agents/instructions/`.
+- [Conversation setup and runtime interventions](docs/conversations.md)
+- [Local HTTP and WebSocket contract](docs/local-api.md)
+- [Loopix routing and provider discovery](docs/protocols/loopix.md)
+- [Kademlia, bootstrap recovery and replicated storage](docs/protocols/kademlia.md)
+- [Application encryption and visibility](docs/protocols/application-envelope.md)
+- [Sphinx implementation, upstream pin, compatibility fixtures and licence](python/app/sphinx_ref/NOTICE.md)
+- [One-shot build report and test output](docs/reports/build.html)
+
+## Operating the laboratory
+
+**Configuration** groups the sender, receiver and mix counts. Choose the pairing, exchanges, polling, outage pattern and seed. Advanced settings control transport, cover traffic, DHT, storage and retries. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
+
+**Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. The playback slider adjusts the wall-clock wait between steps. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
+
+In **Network topology**, select a card or use **Inspect node** for local protocol state, paths and event history. **Fit graph** brings the columns into view. The upper lane carries forward traffic and the lower lane carries independently routed replies. **All transports** includes dormant physical links. The Kademlia inspector shows contacts learned by the selected peer.
+
+Use **Runtime controls** to change receiver polling, take a selected node offline, or block and restore a path or stage boundary. A block affects new attempts immediately. The optional in-flight control also drops packets already on those paths. The event timeline shows what Python observed, and the lineage ledger links keys, ciphertext and storage operations for the selected message.
+
+## Verification
+
+From the repository root with the Python environment active, run the backend checks in the Python directory. The suite includes primitive interoperability, simulation integration, API tests and the seeded 30-transmission scenario.
+
+```bash
+cd python
+ruff check .
+ruff format --check .
+mypy app main.py
+pytest -q --cov=app --cov=main --cov-report=term-missing
+```
+
+Run the client checks from the web directory. Install Chromium once for the Playwright version in the lockfile. Each browser test starts its own Python service and connects through the public UI.
+
+```bash
+cd web
+npx playwright install chromium
+npm run check
+npm run lint
+npm run coverage
+npm run build
+npm run e2e
+```
+
