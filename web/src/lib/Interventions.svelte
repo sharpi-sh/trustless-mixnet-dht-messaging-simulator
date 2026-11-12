@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
+  import NodeIcon from './NodeIcon.svelte';
   import type { LabClient } from './api';
   import type { Snapshot, CommandType, CommandArgs } from './types';
   import { boundaryStates, routeCommand } from './intervention-controls';
@@ -126,12 +127,19 @@
         </button>
       {/if}
     </section>
-    {#if node}
-      <section class="unit">
-        <h3>Node availability</h3>
-        <p>{node.id} · <strong>{node.online ? 'Online' : 'Offline'}</strong></p>
+    <div class="unit availability" role="group" aria-label="Node availability">
+      <h3>Node availability</h3>
+      {#if node}
+        <div class="node-summary">
+          <NodeIcon {node} size={28} />
+          <div>
+            <strong>{node.label}</strong>
+            <span>{node.online ? 'Online' : 'Offline'}</span>
+          </div>
+        </div>
         <button
           {disabled}
+          class:offline={!node.online}
           onclick={() => {
             if (node)
               void send(
@@ -141,8 +149,10 @@
               );
           }}>{node.online ? 'Take node offline' : 'Bring node online'}</button
         >
-      </section>
-    {/if}
+      {:else}
+        <p>Select a node to change its availability.</p>
+      {/if}
+    </div>
     <section class="unit routes">
       <h3>Path controls</h3>
       {#if path}
@@ -158,6 +168,12 @@
           >
         {/if}
       {:else}<p>Select a path on the map or in the inspector.</p>{/if}
+      <label class="tick"
+        ><input type="checkbox" bind:checked={drop} {disabled} /> Drop traffic already
+        in flight</label
+      >
+    </section>
+    <section class="unit">
       <label class="boundary"
         >Stage boundary<select {disabled} bind:value={boundary}
           ><option value="">Select stage boundary</option>
@@ -179,10 +195,6 @@
           >Restore boundary</button
         >
       </div>
-      <label class="tick"
-        ><input type="checkbox" bind:checked={drop} {disabled} /> Drop traffic already
-        in flight</label
-      >
     </section>
   </div>
   <div role="status" aria-live="polite" aria-atomic="true">
@@ -199,9 +211,11 @@
 
 <style>
   .interventions {
-    padding: 0.9rem 1rem;
-    border: 1px solid var(--border, #c9d1cc);
-    border-radius: 0.5rem;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.65rem 0.85rem;
+    border-top: 1px solid var(--border, #c9d1cc);
     color: var(--text, #1c2b24);
     background: var(--panel, #fff);
     font-size: 0.84rem;
@@ -222,21 +236,45 @@
     margin: 0;
   }
   h2 {
-    font-size: 1rem;
+    font-size: 0.9rem;
   }
   h3 {
     font-size: 0.84rem;
   }
   .controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: 1rem;
-    margin-top: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    align-items: start;
+    gap: 0.65rem 0.85rem;
+    margin-top: 0.5rem;
   }
   .unit {
     min-width: 0;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border, #c9d1cc);
+  }
+  .availability {
+    border: 1px solid var(--border, #c9d1cc);
+    border-radius: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    background: white;
+  }
+  .node-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.4rem 0;
+  }
+  .node-summary span {
+    display: block;
+    color: var(--muted, #495a51);
+    font-size: 0.76rem;
+  }
+  button.offline {
+    background: #a32c30;
+    color: #fff;
+    border-color: #902328;
+  }
+  button.offline:hover:enabled {
+    background: #862126;
   }
   .unit p {
     margin: 0.35rem 0 0.45rem;
@@ -255,7 +293,7 @@
   label.boundary {
     display: grid;
     gap: 0.2rem;
-    margin: 0.6rem 0 0.35rem;
+    margin: 0 0 0.35rem;
     font-weight: 550;
   }
   select {

@@ -5,6 +5,16 @@ import type { LabEvent, Snapshot } from '../../src/lib/types';
 import { connect, createSimulation, expect, test } from './backend';
 
 const edited = 'Bob, meet me at the east pier.';
+async function inspectTarget(page: Page, id: string) {
+  await page
+    .getByRole('combobox', { name: 'Inspect node or path', exact: true })
+    .fill(id);
+  await page
+    .locator('[role="option"]')
+    .and(page.locator('[data-inspect-id="' + id + '"]'))
+    .click();
+}
+
 async function configure(page: Page) {
   const field = (name: string) => page.getByLabel(name, { exact: true });
   const addSender = page.getByRole('button', {
@@ -138,9 +148,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   const path = initial.topology.paths.find(
     (p) => p.source_id === 'sender-1' && p.target_id === 'tor-sender-1',
   )!;
-  await page
-    .getByRole('combobox', { name: /^Inspect path/ })
-    .selectOption(path.id);
+  await inspectTarget(page, path.id);
   await button('Block path').click();
   const graph = page.getByRole('group', {
     name: 'Network topology',
@@ -293,9 +301,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     lineage.indexOf('sender_signature_verified'),
   );
 
-  await page
-    .getByRole('combobox', { name: /^Inspect node/ })
-    .selectOption('receiver-1');
+  await inspectTarget(page, 'receiver-1');
   const inspector = page.getByRole('complementary', {
     name: 'Node inspector',
     exact: true,
@@ -496,8 +502,7 @@ test('applies selected-receiver, node and stage-boundary interventions to Python
     });
   const button = (name: string) =>
     panel.getByRole('button', { name, exact: true });
-  const inspect = page.getByRole('combobox', { name: /^Inspect node/ });
-  await inspect.selectOption('receiver-2');
+  await inspectTarget(page, 'receiver-2');
   await button('Disable receiver polling').click();
   const polling = async () =>
     (await read()).devices
@@ -507,7 +512,7 @@ test('applies selected-receiver, node and stage-boundary interventions to Python
   await expect(panel.getByRole('status')).toContainText('Applied');
   await button('Enable receiver polling').click();
   await expect.poll(polling).toEqual([true, true]);
-  await inspect.selectOption('mix-1');
+  await inspectTarget(page, 'mix-1');
   await button('Take node offline').click();
   await expect
     .poll(

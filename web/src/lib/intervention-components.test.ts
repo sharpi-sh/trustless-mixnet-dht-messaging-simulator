@@ -31,6 +31,9 @@ test('selected receiver, blocked path and partial receiver polling are shown fro
   expect(body).toContain('Polling disabled');
   expect(body).toContain('Enable receiver polling');
   expect(body).toContain('Bring node online');
+  expect(body).toContain('aria-label="Node availability"');
+  expect(body).toContain('/avatars/receiver-1.jpg');
+  expect(body).toMatch(/<button[^>]*class="[^"]*\boffline\b[^"]*"/);
   expect(body).toContain('Restore path');
   for (const name of new Set(snapshot.topology.paths.map((p) => p.boundary)))
     expect(body).toContain(name);
@@ -53,6 +56,12 @@ test('all mutating controls are disabled when the server disconnects or a run is
   }).body;
   expect(enabled).toContain('Disable receiver polling');
   expect(enabled).toContain('Take node offline');
+  expect(enabled).not.toMatch(/<button[^>]*class="[^"]*\boffline\b[^"]*"/);
+  const idle = render(Interventions, {
+    props: { ...controlProps, selectedNode: '' },
+  }).body;
+  expect(idle).toContain('Select a node to change its availability.');
+  expect(idle).not.toContain('Bring node online');
   expect(enabled).not.toContain('Restore path');
 });
 

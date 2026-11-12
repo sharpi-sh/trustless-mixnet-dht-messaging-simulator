@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import type { Snapshot, LabEvent, NodeDetails, Path } from './types';
   import {
     layoutTopology,
@@ -29,7 +29,9 @@
     onNode,
     onPath,
     onLeg,
+    runtimeControls,
   }: {
+    runtimeControls?: Snippet;
     lab: Snapshot;
     events: LabEvent[];
     selectedNode: string;
@@ -404,75 +406,82 @@
   bind:this={panel}
   aria-labelledby="topology-heading"
 >
-  <div class="graph-head">
-    <div>
-      <h2 id="topology-heading">Network topology</h2>
-      <p>
-        {lab.topology.nodes.length} nodes <span>·</span>
-        {lab.topology.paths.length} configured paths <span>·</span>
-        {transits.length}
-        {showAll ? 'in transit' : 'message and poll transits'}
-      </p>
-      {#if receiver}
-        <p data-poll-owner={receiver.id}>
-          {receiver.label} · {receiver.polling_enabled
-            ? 'Poll every ' + lab.config.polling_interval_ms + ' ms'
-            : 'Polling disabled'}
-          {#if traces.pollStarts.has(receiver.id)}
-            · Last request {traces.pollStarts.get(receiver.id)} ms
-          {/if}
-          {#if traces.pollResults.has(receiver.id)}
-            · {traces.pollResults.get(receiver.id)}
-          {/if}
+  <header class="topology-header">
+    <div class="graph-head">
+      <div>
+        <h2 id="topology-heading">Network topology</h2>
+        <p>
+          {lab.topology.nodes.length} nodes <span>·</span>
+          {lab.topology.paths.length} configured paths <span>·</span>
+          {transits.length}
+          {showAll ? 'in transit' : 'message and poll transits'}
         </p>
-      {/if}
-    </div>
-    <div class="tools">
-      <label
-        ><input type="checkbox" bind:checked={showAll} /> All transports</label
-      >
-      <div class="zoom">
-        <button
-          aria-label="Zoom out"
-          title="Zoom out"
-          onclick={() => zoomBy(1 / 1.2)}>−</button
+        {#if receiver}
+          <p data-poll-owner={receiver.id}>
+            {receiver.label} · {receiver.polling_enabled
+              ? 'Poll every ' + lab.config.polling_interval_ms + ' ms'
+              : 'Polling disabled'}
+            {#if traces.pollStarts.has(receiver.id)}
+              · Last request {traces.pollStarts.get(receiver.id)} ms
+            {/if}
+            {#if traces.pollResults.has(receiver.id)}
+              · {traces.pollResults.get(receiver.id)}
+            {/if}
+          </p>
+        {/if}
+      </div>
+      <div class="tools">
+        <label
+          ><input type="checkbox" bind:checked={showAll} /> All transports</label
         >
+        <div class="zoom">
+          <button
+            aria-label="Zoom out"
+            title="Zoom out"
+            onclick={() => zoomBy(1 / 1.2)}>−</button
+          >
+          <button
+            class="number"
+            aria-label="Actual size"
+            title="Actual size"
+            onclick={() => {
+              autoFit = false;
+              zoom = 1;
+            }}>{Math.round(zoom * 100)}%</button
+          >
+          <button
+            aria-label="Zoom in"
+            title="Zoom in"
+            onclick={() => zoomBy(1.2)}>+</button
+          >
+          <button
+            class="fit"
+            aria-label="Fit graph"
+            title="Fit graph"
+            onclick={fit}
+            ><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
+              ><path
+                d="M2 6V2h4m4 0h4v4m0 4v4h-4m-4 0H2v-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              /></svg
+            ></button
+          >
+        </div>
         <button
-          class="number"
-          aria-label="Actual size"
-          title="Actual size"
-          onclick={() => {
-            autoFit = false;
-            zoom = 1;
-          }}>{Math.round(zoom * 100)}%</button
-        >
-        <button aria-label="Zoom in" title="Zoom in" onclick={() => zoomBy(1.2)}
-          >+</button
-        >
-        <button
-          class="fit"
-          aria-label="Fit graph"
-          title="Fit graph"
-          onclick={fit}
-          ><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"
-            ><path
-              d="M2 6V2h4m4 0h4v4m0 4v4h-4m-4 0H2v-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            /></svg
-          ></button
+          class="screen-button"
+          bind:this={screenButton}
+          aria-expanded={expanded}
+          onclick={toggleScreen}
+          >{expanded ? 'Close full screen' : 'Full screen'}</button
         >
       </div>
-      <button
-        class="screen-button"
-        bind:this={screenButton}
-        aria-expanded={expanded}
-        onclick={toggleScreen}
-        >{expanded ? 'Close full screen' : 'Full screen'}</button
-      >
     </div>
-  </div>
+    {#if runtimeControls}
+      <div class="runtime-controls">{@render runtimeControls()}</div>
+    {/if}
+  </header>
   <div class="diagram-layout">
     {#key lab.simulation_id + '/' + lab.epoch + '/' + sender?.id}
       <ConversationColumn
@@ -983,7 +992,10 @@
     min-height: 0;
     height: auto;
   }
-  .expanded .graph-head,
+  .expanded .runtime-controls {
+    display: none;
+  }
+  .expanded .topology-header,
   .expanded .legend {
     flex-shrink: 0;
   }
