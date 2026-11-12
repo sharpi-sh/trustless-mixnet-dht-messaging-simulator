@@ -131,8 +131,10 @@ def test_zero_pacing_yields_between_steps_and_can_be_changed_live(monkeypatch):
             await asyncio.sleep(0)
             before = steps
             await service.command(lab, command(lab, "set_playback_delay", "fast", delay_ms=0))
-            await asyncio.wait_for(service.wait(lab.id, 0, len(lab.events)), 0.5)
-            assert steps > before and lab.snapshot()["step_delay_ms"] == 0
+            async with asyncio.timeout(0.5):
+                while steps <= before:
+                    await asyncio.sleep(0)
+            assert lab.status == "running" and lab.snapshot()["step_delay_ms"] == 0
             assert all(p.base_transit_delay_ms == 345 for p in lab.topology.paths.values())
             await service.command(lab, command(lab, "stop", "stop"))
         finally:
