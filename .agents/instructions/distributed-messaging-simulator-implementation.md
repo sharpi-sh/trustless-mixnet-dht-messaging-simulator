@@ -694,7 +694,7 @@ The application assumes authentic directory pins at setup. Display names and par
 
 ## 4.4 Participant connection channels
 
-Each participant owns a connection channel. Each individual sender and recipient can independently select Tor (the default), Outline Shadowsocks or a direct request. References elsewhere to participant Tor boundaries describe the default profile. The selected channel applies to message transmission, provider polling, DHT access, vault retrieval and replies originating at that device.
+Each participant owns a connection channel. Each individual sender and recipient can independently select Tor (the default), Outline Shadowsocks or a direct request. The creation API accepts a `participant_channels` map keyed by device ID. Devices without an entry inherit their role default for compatibility. References elsewhere to participant Tor boundaries describe the default profile. The selected channel applies to message transmission, provider polling, DHT access, vault retrieval and replies originating at that device.
 
 - Tor models a single boundary with distinct guard and exit addresses. Circuit construction, relay selection and onion encryption are outside the simulation.
 - Outline Shadowsocks models a proxy with a client-facing address and a server egress address. The proxy sees the device's IP on entry. The next service sees the proxy's IP. The simulation represents address visibility without implementing the Shadowsocks wire protocol.
