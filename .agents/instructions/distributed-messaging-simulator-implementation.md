@@ -1240,7 +1240,7 @@ The graph must distinguish configured protocol topology from observed traffic. F
 
 Label the access link for the selected channel and identify local interface handoffs. Channel egress connects to the Loopix ingress `ProviderNode`; the provider is the mixnet ingestion point. Do not label a first-layer mix node as the ingestion provider.
 
-Place runtime controls in the network topology header. Group node availability with the selected node’s glyph or portrait and show its availability button in red while offline. Provide direct graph controls for **Block route**, **Restore route**, **Disable polling** and **Enable polling**. Controls dispatch typed commands to Python and show pending, applied or rejected state.
+Place runtime controls inside the network topology header row, centred between the receiver polling summary and the transport and zoom controls. Group node availability with the selected node’s glyph or portrait and show its availability button in red while offline. Provide direct graph controls for **Block route**, **Restore route**, **Disable polling** and **Enable polling**. Controls dispatch typed commands to Python and show pending, applied or rejected state.
 
 ### D. Node inspector
 
