@@ -51,6 +51,7 @@ test('node and path histories keep newest records first without mutating the eve
   expect(
     relevant(events, 'sender-1', undefined).map((e) => e.sequence),
   ).toEqual([3]);
+  expect(relevant(events, '', path, 1).map((e) => e.sequence)).toEqual([2]);
   expect(events.map((e) => e.sequence)).toEqual([1, 2, 3]);
 });
 

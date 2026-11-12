@@ -67,7 +67,7 @@
       Object.entries(p.active).map(([id, t]) => ({ id, path: p.id, ...t })),
     ),
   );
-  let history = $derived(relevant(events, node?.id ?? '', path));
+  let history = $derived(relevant(events, node?.id ?? '', path, pageSize + 1));
   let lineage = $derived(
     node
       ? lab.lineage
