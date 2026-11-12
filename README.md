@@ -160,7 +160,7 @@ cd web
 npm run dev
 ```
 
-Open the local URL printed by Vite, enter the backend port or URL, test the connection, configure and create the simulation, then press **Run**. Connecting does not create or start a simulation automatically.
+Open the local URL printed by Vite, enter the backend port or URL, test the connection, configure and create the simulation, then press **Run**. Connecting leaves simulations idle until you press Run. If the connected server reports Tor-only access or older playback timing, choose **Find and connect to updated backend** to open the current server’s configuration. Select sender and recipient channels before creating the new simulation.
 
 ## Documentation
 
@@ -176,7 +176,7 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 
 **Configuration** groups the sender, receiver and mix counts. Choose the sender and recipient connection channels independently, along with pairing, exchanges, polling, outage pattern and seed. Advanced settings control transport, cover traffic, DHT, storage and retries. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
 
-**Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. During ordinary playback, Python advances through background traffic and applies the playback delay to message activity. The timeline retains the intervening events. **Step to first message hop** processes bootstrap and cover events until a device starts sending its first message over a remote link, then pauses with the packet in transit. The playback slider accepts 0 ms to remove the wall-clock wait; logical transit and mixing delays still apply. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
+**Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. At startup, Run processes DHT bootstrap, polling and cover traffic without pausing on those steps. The first animated message leaves its sender when the Python send clock fires. The timeline retains the intervening events. **Step to first message hop** processes bootstrap and cover events until a device starts sending its first message over a remote link, then pauses with the packet in transit. The playback slider accepts 0 ms to remove the wall-clock wait; logical transit and mixing delays still apply. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
 
 In **Network topology**, select a card or use **Inspect node** for local protocol state, paths and event history. **Fit graph** brings the columns into view. The upper lane carries forward traffic and the lower lane carries independently routed replies. **All transports** includes dormant physical links. Each message and reply has its own colour. Select a coloured line to inspect its recorded traversals and the cargo present at departure. The conversation panes show sent and received messages in local device-log order, with simulation timestamps. **Full screen** expands the diagram; use **Close full screen** or Escape to return. The Kademlia inspector shows contacts learned by the selected peer.
 

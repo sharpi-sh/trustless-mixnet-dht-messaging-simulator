@@ -16,7 +16,7 @@ The experimental adapter can place an opaque lookup handle in the associated pro
 
 ### What appears first on the diagram
 
-The DHT bootstraps at logical time zero. Each sender queues its encrypted message and waits for its own Loopix payload clock to fire. That packet starts at the sender’s device and crosses its selected connection channel before reaching the provider. DHT bootstrap, cover traffic and client polling can all precede the first payload.
+The DHT bootstraps at logical time zero. Each sender queues its encrypted message and waits for its own Loopix payload clock to fire. That packet starts at the sender’s device and crosses its selected connection channel before reaching the provider. At the default payload rate of three opportunities per minute, the mean wait is 20 simulated seconds and the actual wait varies with the seed. The DHT and payload clocks run independently. Ordinary Run advances through initial maintenance without a playback delay and preserves every event in the timeline. The default diagram follows message traffic. **All transports** includes maintenance traffic.
 
 ### Providers and retrieval privacy
 
