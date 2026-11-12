@@ -8,6 +8,7 @@ def test_connection_has_no_side_effect():
         health = client.get("/health").json()
         assert health["simulation_active"] is False
         assert health["message_paced_playback"] is True
+        assert health["first_departure_playback"] is True
         assert client.get("/api/config").json()["exchanges"] == 1
         assert (
             "access-control-allow-origin"

@@ -109,3 +109,30 @@ def test_stream_waits_for_publication_even_when_background_steps_are_already_que
         await service.close()
 
     asyncio.run(scenario())
+
+
+def test_first_playback_update_is_the_real_departure_even_after_many_background_batches(monkeypatch):
+    import app.service as module
+
+    async def scenario():
+        # Exercise both old triggers for a background-only frame on a short seed.
+        monkeypatch.setattr(module, "FIRST_HOP_STEP_LIMIT", 2)
+        monkeypatch.setattr(module, "STREAM_BATCH_STEPS", 1)
+        service = Service()
+        lab = service.create(Config(random_seed=422, dht_nodes=3, step_delay_ms=1000))
+        try:
+            await service.command(lab, command(lab, "run"))
+            cursor = len(lab.events)
+            await asyncio.wait_for(service.wait(lab.id, 0, cursor), 3)
+            departure = lab.first_message_hop_sequence
+            assert departure is not None
+            assert lab.events[departure - 1].source_id == "sender-1"
+            assert lab.events[departure - 1].payload["transit_id"] in lab.in_flight
+            assert any(
+                e.event_type == "path_transit_completed" and not e.message_id
+                for e in lab.events[cursor : departure - 1]
+            )
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
