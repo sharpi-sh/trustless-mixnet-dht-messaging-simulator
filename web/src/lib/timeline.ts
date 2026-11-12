@@ -7,6 +7,7 @@ export const categories = [
   'Outline Shadowsocks',
   'Direct connection',
   'Mixnet',
+  'Anonymous retrieval',
   'DHT',
   'Storage',
   'Routing',
@@ -45,6 +46,12 @@ function categoryMatch(
       return touches('direct') || name.startsWith('direct_');
     case 'Mixnet':
       return /^(mix|sphinx|cover_|packet_)/.test(name);
+    case 'Anonymous retrieval':
+      return (
+        name.startsWith('retrieval_') ||
+        (typeof e.payload.token === 'string' &&
+          e.payload.token.startsWith('retrieval-'))
+      );
     case 'DHT':
       return name.startsWith('kademlia_') || touches('dht');
     case 'Storage':
@@ -114,6 +121,8 @@ export function makeTimelineIndex() {
           e.target_id,
           e.payload.packet_id,
           e.payload.token,
+          e.payload.exchange_id,
+          e.payload.operation,
         ].some((v) => typeof v === 'string' && v.toLowerCase().includes(search))
       )
         continue;
@@ -126,6 +135,10 @@ export function makeTimelineIndex() {
 export function eventSummary(e: LabEvent) {
   const p = e.payload;
   if (typeof p.reason === 'string') return p.reason;
+  if (e.event_type.startsWith('retrieval_'))
+    return [p.operation, p.service_id, p.exchange_id]
+      .filter((value) => typeof value === 'string')
+      .join(' · ');
   if (Array.isArray(p.ordered_route)) return p.ordered_route.join(' → ');
   if (typeof p.method === 'string')
     return p.method + (p.peer ? ' · ' + p.peer : '');

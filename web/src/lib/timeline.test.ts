@@ -76,3 +76,23 @@ test('uses actual packet routes, failure reasons and logical delay in summaries'
     '45 ms',
   );
 });
+
+test('finds both anonymous retrieval legs by the exchange reference', () => {
+  const p = {
+    exchange_id: 'read-8',
+    service_id: 'storage-3',
+    operation: 'fragment',
+  };
+  const events = [
+    row(1, 'retrieval_request_delivered', p),
+    row(2, 'retrieval_reply_received', p),
+    row(3, 'poll_started'),
+  ];
+  const view = makeTimelineIndex()(
+    events,
+    { ...filters, category: 'Anonymous retrieval', query: 'read-8' },
+    nodes,
+  );
+  expect(view.count).toBe(2);
+  expect(eventSummary(events[0])).toBe('fragment · storage-3 · read-8');
+});

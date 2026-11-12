@@ -26,7 +26,7 @@
   const components = {
     person:
       'A simulated handset or computer running the messaging client. It encrypts outgoing messages and decrypts received messages. The enclosed public key lets the recipient encrypt a reply.',
-    tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
+    tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. The device uses Tor to reach its provider. Manifest and fragment requests continue through the mixnet. Responses return through single-use reply blocks.',
     shadowsocks:
       'A simulated Outline Shadowsocks proxy. It sees the device IP on its incoming connection. The next server sees the proxy’s outgoing IP.',
     direct:
@@ -34,9 +34,9 @@
     provider:
       'A simulated server running a Loopix provider. It accepts Sphinx packets from its clients, forwards them to the first mix layer, and holds mailbox handles for periodic collection. At egress it hands the encrypted bundle to the storage gateway.',
     mix: 'A simulated relay server running a Loopix mix. It checks the packet and replay tag, removes one Sphinx layer, waits for the encoded delay and forwards to the encoded next hop.',
-    dht: 'A simulated server running a Kademlia peer. Its local routing table guides XOR-distance lookups for encrypted manifests. Peers exchange bootstrap traffic as soon as the network starts.',
+    dht: 'A simulated server running a Kademlia peer. A service gateway receives mixed manifest requests. Its local routing table guides XOR-distance lookups for encrypted manifests. Peers exchange bootstrap traffic as soon as the network starts.',
     storage:
-      'A simulated storage server running a vault service. It keeps encrypted fragments and serves replicas by identifier. The vault can observe request times, sizes and repeated reads.',
+      'A simulated storage server running a vault service. It keeps encrypted fragments and answers reads through single-use reply blocks supplied by the requester. The vault can observe request times, sizes and repeated reads.',
   };
   const tabs = ['Protocol state', 'Activity', 'Lineage'] as const;
   let tab = $state<(typeof tabs)[number]>('Protocol state');
@@ -507,6 +507,17 @@
         {#each info.profile.boundaries as limit (limit)}<p>
             {limit}
           </p>{/each}
+        {#if node.kind === 'storage' || node.kind === 'dht' || node.kind === 'provider'}
+          {#each lab.profiles.filter((profile) => profile.id === 'anonymous-retrieval') as retrieval (retrieval.id)}
+            <h4>{retrieval.name}</h4>
+            {#each retrieval.operations as operation (operation)}<p>
+                {operation}
+              </p>{/each}
+            {#each retrieval.boundaries as boundary (boundary)}<p>
+                {boundary}
+              </p>{/each}
+          {/each}
+        {/if}
       </details>{/if}
   </aside>
 {:else if path}
