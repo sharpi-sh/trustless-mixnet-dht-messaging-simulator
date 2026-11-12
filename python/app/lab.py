@@ -55,6 +55,7 @@ class Laboratory(StorageSimulation):
         self.polls.start()
         for msgs in self.order.values():
             self.schedule(Compose(message_id=msgs[0]))
+        self.emit("simulation_initialised",Action())
 
     def apply(self,action: Intervention) -> None:
         super().apply(action)
