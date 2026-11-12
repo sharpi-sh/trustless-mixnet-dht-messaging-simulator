@@ -119,7 +119,9 @@ def test_timed_polls_publish_before_first_departure_without_dht_only_frames_or_d
         monkeypatch.setattr(module, "FIRST_HOP_STEP_LIMIT", 2)
         monkeypatch.setattr(module, "STREAM_BATCH_STEPS", 1)
         service = Service()
-        lab = service.create(Config(random_seed=422, dht_nodes=3, polling_interval_ms=1000, step_delay_ms=1000))
+        lab = service.create(
+            Config(random_seed=422, dht_nodes=3, polling_interval_ms=1000, step_delay_ms=1000)
+        )
         try:
             await service.command(lab, command(lab, "run"))
             cursor = len(lab.events)

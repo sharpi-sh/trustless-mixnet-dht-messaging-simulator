@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 from app.config import Config
 from app.engine import Engine, Intervention
 from app.polling import CELL_BYTES, MailboxItem, PollRuntime
@@ -112,5 +114,21 @@ def test_slow_padded_responses_can_overlap_multiple_fixed_ticks_without_duplicat
             break
     assert [item.handle for item in lab.items] == handles
     ticks = [e.simulation_time_ms for e in lab.events if e.event_type == "poll_started"]
-    assert all(b - a == 100 for a, b in zip(ticks, ticks[1:], strict=False))
+    assert all(b - a == 100 for a, b in pairwise(ticks))
     assert any(e.event_type == "poll_empty" for e in lab.events)
+
+
+def test_disabling_several_outstanding_pulls_restores_all_reserved_handles_in_provider_order():
+    lab = PollLab(base_transit_delay_ms=90)
+    uid = "receiver-1"
+    handles = [bytes([i]) * 20 for i in range(1, 6)]
+    lab.inboxes[uid].messages.extend(handles)
+    lab.start()
+    lab.until("poll_response_prepared", 2)
+    assert lab.inboxes[uid].messages == handles[4:]
+    lab.intervene(Intervention(command="polling", target=uid, token="disable", enabled=False))
+    lab.polls.cancel(uid)
+    for _ in lab.drain(35):
+        pass
+    assert not lab.polls.active and not lab.items
+    assert lab.inboxes[uid].messages == handles
