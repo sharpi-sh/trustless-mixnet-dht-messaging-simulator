@@ -36,6 +36,57 @@ Reference algorithms:
 - [The Loopix Anonymity System, USENIX Security 2017](https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-piotrowska.pdf)
 - [Kademlia: A Peer-to-peer Information System Based on the XOR Metric, 2002](https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf)
 
+## End-to-end message flow
+
+```mermaid
+sequenceDiagram
+    participant A as Alice device
+    participant AT as Alice Tor abstraction
+    participant IP as Ingress provider
+    participant L1 as Loopix layer 1
+    participant L2 as Loopix layer 2
+    participant L3 as Loopix layer 3
+    participant EP as Egress provider
+    participant D as Kademlia DHT
+    participant V as Encrypted vaults
+    participant BT as Bob Tor abstraction
+    participant B as Bob device
+
+    Note over A,V: Forward message carries Alice's reply public key inside encrypted content
+    A->>AT: Compose and encrypt message
+    AT->>IP: Tor egress to Loopix provider
+    IP->>L1: Source-routed Sphinx packet
+    L1->>L2: Process layer and apply mix delay
+    L2->>L3: Process layer and apply mix delay
+    L3->>EP: Deliver opaque packet
+    EP->>D: Publish opaque encrypted manifest
+    D->>V: Place encrypted fragments
+
+    B->>BT: Poll for messages
+    BT->>D: Resolve opaque mailbox record
+    D->>V: Locate encrypted fragments
+    V-->>BT: Return encrypted fragments
+    BT-->>B: Reconstruct and decrypt
+    Note over B: Alice's unverified reply key becomes visible after decryption
+
+    B->>BT: Encrypt reply to Alice's reply key
+    BT->>EP: Provider acts as reply ingress
+    EP->>L3: New independent source route
+    L3->>L2: Process reply packet
+    L2->>L1: Process reply packet
+    L1->>IP: Provider acts as reply egress
+    IP->>D: Publish reply manifest
+    D->>V: Place encrypted reply fragments
+
+    A->>AT: Poll for replies
+    AT->>D: Resolve Alice's opaque mailbox
+    D->>V: Locate reply fragments
+    V-->>AT: Return encrypted reply fragments
+    AT-->>A: Reconstruct and decrypt reply
+```
+
+Every arrow represents a Python-owned `NetworkPath` with its own logical transit delay. Loopix mixing delay occurs inside each mix layer and playback delay only controls presentation speed.
+
 ## Code components
 
 - **Python simulation engine (`python/`):** people, cryptographic identities, Tor abstractions, Loopix providers and mix nodes, Kademlia DHT nodes, storage nodes, network steps, scheduling, availability and message processing.
