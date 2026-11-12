@@ -1,4 +1,5 @@
 """Validated settings shared by creation, protocol metadata and the browser."""
+
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,12 +21,14 @@ class Config(Model):
     min_nodes: int = Field(15, ge=10, le=20)
     max_nodes: int = Field(15, ge=10, le=20)
     randomise_count: bool = False
-    pairing_strategy: Literal["all_to_one","one_to_all","one_to_one_pairs","random_pairs"] = "all_to_one"
+    pairing_strategy: Literal["all_to_one", "one_to_all", "one_to_one_pairs", "random_pairs"] = (
+        "all_to_one"
+    )
     pair_count: int = Field(1, ge=1, le=100)
     exchanges: int = Field(1, ge=1, le=10)
-    random_seed: int | None = Field(None, ge=0, le=2**53-1)
+    random_seed: int | None = Field(None, ge=0, le=2**53 - 1)
     polling_enabled: bool = True
-    polling_overrides: dict[str,bool] = Field(default_factory=dict)
+    polling_overrides: dict[str, bool] = Field(default_factory=dict)
     polling_interval_ms: int = Field(15000, ge=100, le=600000)
     poll_batch: int = Field(3, ge=1, le=16)
     base_transit_delay_ms: int = Field(250, ge=0, le=60000)
@@ -40,7 +43,9 @@ class Config(Model):
     storage_nodes: int = Field(12, ge=1, le=32)
     replicas: int = Field(2, ge=1, le=8)
     chunk_bytes: int = Field(128, ge=32, le=4096)
-    pattern: Literal["always_online","always_offline","random","bursty","scheduled"] = "always_online"
+    pattern: Literal["always_online", "always_offline", "random", "bursty", "scheduled"] = (
+        "always_online"
+    )
     failure_probability: float = Field(0.1, ge=0, le=1)
     min_outage_ms: int = Field(500, ge=0, le=3600000)
     max_outage_ms: int = Field(500000, ge=0, le=3600000)
@@ -66,6 +71,9 @@ class Config(Model):
             raise ValueError("Replication exceeds the number of storage nodes")
         if self.pairing_strategy == "one_to_one_pairs" and self.sender_count != self.receiver_count:
             raise ValueError("One-to-one pairing requires equal participant counts")
-        if self.pairing_strategy == "random_pairs" and self.pair_count > self.sender_count*self.receiver_count:
+        if (
+            self.pairing_strategy == "random_pairs"
+            and self.pair_count > self.sender_count * self.receiver_count
+        ):
             raise ValueError("Random pair count exceeds distinct pairs")
         return self

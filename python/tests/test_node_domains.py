@@ -2,7 +2,7 @@ from random import Random
 
 import pytest
 
-from app.kademlia import DHTNetwork, ID_SPACE
+from app.kademlia import ID_SPACE, DHTNetwork
 from app.storage import StorageNetwork
 
 
@@ -18,8 +18,9 @@ def test_dht_identity_is_seeded_and_safe_to_display():
     assert snapshot["k"] == 20 and snapshot["alpha"] == 3
 
 
-@pytest.mark.parametrize("peer,node_id", [("", 4), ("one", 4), ("two", 3), ("two", -1),
-                                          ("two", ID_SPACE)])
+@pytest.mark.parametrize(
+    "peer,node_id", [("", 4), ("one", 4), ("two", 3), ("two", -1), ("two", ID_SPACE)]
+)
 def test_conflicting_and_invalid_dht_ids_are_rejected(peer, node_id):
     network = DHTNetwork(Random(43))
     network.add_node("one", 3)
@@ -34,8 +35,10 @@ def test_vaults_have_independent_storage_and_inspect_only_identifiers():
     assert network.inspect("storage-1")["fragment_ids"] == []
     view = network.inspect("storage-2")
     assert "opaque" not in str(view)
-    assert {k:view[k] for k in ("node_id","address","fragment_ids")} == {
-        "node_id": "storage-2", "address": "sim://storage-2", "fragment_ids": ["fragment"]
+    assert {k: view[k] for k in ("node_id", "address", "fragment_ids")} == {
+        "node_id": "storage-2",
+        "address": "sim://storage-2",
+        "fragment_ids": ["fragment"],
     }
     with pytest.raises(ValueError):
         StorageNetwork(["storage-1", "storage-1"])

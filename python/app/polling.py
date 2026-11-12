@@ -71,21 +71,30 @@ class PollRuntime:
         if not self._enabled(uid) or uid in self.active:
             return
         person = sim.clients.people[uid]
-        provider = next(p for p in sim.topology.mixnet.providers
-                        if sim.topology.path_id(person.tor.id, p) in sim.topology.paths)
+        provider = next(
+            p
+            for p in sim.topology.mixnet.providers
+            if sim.topology.path_id(person.tor.id, p) in sim.topology.paths
+        )
         self._serial += 1
         token = f"poll-{self._serial}"
         pull = _Pull(token, (uid, person.tor.id, provider, person.tor.id, uid))
         self.active[uid] = pull
-        sim.emit("poll_started", Action(source=uid, target=provider, token=token),
-                 interval_ms=sim.config.polling_interval_ms, provider_id=provider)
+        sim.emit(
+            "poll_started",
+            Action(source=uid, target=provider, token=token),
+            interval_ms=sim.config.polling_interval_ms,
+            provider_id=provider,
+        )
         self._transit(pull, 1)
 
     def _transit(self, pull: _Pull, hop: int) -> None:
         uid = pull.route[0]
         lane: Direction = "reply" if self.sim.clients.people[uid].role == "sender" else "forward"
         source, target = pull.route[hop - 1], pull.route[hop]
-        arrival = PollHop(source=source, target=target, lane=lane, token=pull.token, person_id=uid, hop=hop)
+        arrival = PollHop(
+            source=source, target=target, lane=lane, token=pull.token, person_id=uid, hop=hop
+        )
         failure = PollFailure(source=source, target=target, lane=lane, token=pull.token, person_id=uid)
         self.sim.transit(source, target, arrival, failure, token=pull.token, lane=lane)
 
@@ -111,8 +120,13 @@ class PollRuntime:
             reserved = inbox.messages[:batch]
             pull.cells = inbox.poll(batch, CELL_BYTES)
             pull.reserved = reserved
-            sim.emit("poll_response_prepared", action, slots=batch, cell_bytes=CELL_BYTES,
-                     response_bytes=batch * CELL_BYTES)
+            sim.emit(
+                "poll_response_prepared",
+                action,
+                slots=batch,
+                cell_bytes=CELL_BYTES,
+                response_bytes=batch * CELL_BYTES,
+            )
         if action.hop < 4:
             self._transit(pull, action.hop + 1)
             return
@@ -122,10 +136,20 @@ class PollRuntime:
             length = int.from_bytes(cell[:2], "big")
             if length:
                 found += 1
-                sim.schedule(MailboxItem(source=uid, token=action.token, handle=cell[2:2 + length],
-                                         lane=action.lane))
-        sim.emit("poll_message_found" if found else "poll_empty", action, person_id=uid, found=found,
-                 slots=len(pull.cells), cell_bytes=CELL_BYTES, response_bytes=len(pull.cells) * CELL_BYTES)
+                sim.schedule(
+                    MailboxItem(
+                        source=uid, token=action.token, handle=cell[2 : 2 + length], lane=action.lane
+                    )
+                )
+        sim.emit(
+            "poll_message_found" if found else "poll_empty",
+            action,
+            person_id=uid,
+            found=found,
+            slots=len(pull.cells),
+            cell_bytes=CELL_BYTES,
+            response_bytes=len(pull.cells) * CELL_BYTES,
+        )
 
     def handle(self, action: Action) -> bool:
         if isinstance(action, PollClock):

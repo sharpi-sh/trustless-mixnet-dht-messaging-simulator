@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from random import Random
 from typing import Any
 
-from .buckets import ID_BITS, ID_SPACE, K, Contact, DHTRoutingTable, Probe
+from .buckets import ID_BITS, ID_SPACE, Contact, DHTRoutingTable, K, Probe
 from .kad_types import Complete, Effect, Method, Notice, Outstanding, Record, Rpc, Search, Timer
 
 ALPHA = 3
@@ -69,34 +69,79 @@ class DHTNetwork:
     def inspect(self, peer: str, now: int) -> dict[str, Any]:
         node = self.nodes[peer]
         searches = [
-            {"op_id": s.op_id, "key": f"{s.key:040x}", "purpose": s.purpose,
-             "shortlist": [{"peer": c.peer, "distance": f"{c.node_id ^ s.key:040x}",
-                            "queried": c.peer in s.queried, "responded": c.peer in s.responded,
-                            "timed_out": c.peer in s.silent} for c in
-                           sorted(s.contacts.values(), key=lambda c: c.node_id ^ s.key)],
-             "final_sweep": s.final_sweep}
-            for s in self._searches.values() if s.origin == peer
+            {
+                "op_id": s.op_id,
+                "key": f"{s.key:040x}",
+                "purpose": s.purpose,
+                "shortlist": [
+                    {
+                        "peer": c.peer,
+                        "distance": f"{c.node_id ^ s.key:040x}",
+                        "queried": c.peer in s.queried,
+                        "responded": c.peer in s.responded,
+                        "timed_out": c.peer in s.silent,
+                    }
+                    for c in sorted(s.contacts.values(), key=lambda c: c.node_id ^ s.key)
+                ],
+                "final_sweep": s.final_sweep,
+            }
+            for s in self._searches.values()
+            if s.origin == peer
         ]
-        return {"peer_id": node.peer_id, "node_id": f"{node.node_id:040x}", "address": node.address,
-                "simulation_time_ms": now, "k": K, "alpha": ALPHA, "buckets": node.table.inspect(now),
-                "active_lookups": searches, "observations": node.observations.copy(),
-                "record_ids": [f"{key:040x}" for key, r in node.records.items() if r.expires_at > now]}
+        return {
+            "peer_id": node.peer_id,
+            "node_id": f"{node.node_id:040x}",
+            "address": node.address,
+            "simulation_time_ms": now,
+            "k": K,
+            "alpha": ALPHA,
+            "buckets": node.table.inspect(now),
+            "active_lookups": searches,
+            "observations": node.observations.copy(),
+            "record_ids": [f"{key:040x}" for key, r in node.records.items() if r.expires_at > now],
+        }
 
     @staticmethod
     def _notice(wire: Rpc, sent: bool) -> Notice:
-        return Notice("kademlia_rpc_sent" if sent else "kademlia_rpc_received",
-                      wire.source if sent else wire.target,
-                      {"rpc_id": f"{wire.rpc_id:040x}", "method": wire.method, "reply": wire.reply,
-                       "source_id": wire.source, "target_id": wire.target, "key": f"{wire.key:040x}"})
+        return Notice(
+            "kademlia_rpc_sent" if sent else "kademlia_rpc_received",
+            wire.source if sent else wire.target,
+            {
+                "rpc_id": f"{wire.rpc_id:040x}",
+                "method": wire.method,
+                "reply": wire.reply,
+                "source_id": wire.source,
+                "target_id": wire.target,
+                "key": f"{wire.key:040x}",
+            },
+        )
 
-    def _send(self, source: str, target: str, method: Method, now: int, key: int = 0,
-              record: Record | None = None, op_id: str = "", probe: Probe | None = None,
-              cached: bool = False) -> list[Effect]:
+    def _send(
+        self,
+        source: str,
+        target: str,
+        method: Method,
+        now: int,
+        key: int = 0,
+        record: Record | None = None,
+        op_id: str = "",
+        probe: Probe | None = None,
+        cached: bool = False,
+    ) -> list[Effect]:
         token = self.rng.getrandbits(ID_BITS)
         while token in self._calls:
             token = self.rng.getrandbits(ID_BITS)
-        request = Rpc(source, target, token, method, False, self.nodes[source].contact,
-                      key, record=record, cached=cached)
+        request = Rpc(
+            source,
+            target,
+            token,
+            method,
+            False,
+            self.nodes[source].contact,
+            key,
+            record=record,
+            cached=cached,
+        )
         self._calls[token] = Outstanding(request, op_id, probe)
         return [self._notice(request, True), request, Timer(now + self.timeout_ms, token)]
 
@@ -110,21 +155,27 @@ class DHTNetwork:
         observation = node.observations.setdefault(contact.peer, {"failures": 0})
         observation.update(last_contact_ms=now, status="responded")
         probe = node.table.observe(contact, now)
-        effects: list[Effect] = [Notice("kademlia_bucket_updated", node.peer_id, {"contact": contact.peer}),
-                                 *self._probe(node.peer_id, probe, now)]
+        effects: list[Effect] = [
+            Notice("kademlia_bucket_updated", node.peer_id, {"contact": contact.peer}),
+            *self._probe(node.peer_id, probe, now),
+        ]
         if first_seen:
             # Only the previous closest holder transfers records to a newly learnt peer (§2.5).
             for key in list(node.replica_due):
                 record = node.record(key, now)
                 others = [c for c in node.table.closest(key, K + 1) if c.peer != contact.peer]
-                if (record and all(node.node_id ^ key < c.node_id ^ key for c in others)
-                        and sum(c.node_id ^ key < contact.node_id ^ key
-                                for c in [*others, node.contact]) < K):
+                if (
+                    record
+                    and all(node.node_id ^ key < c.node_id ^ key for c in others)
+                    and sum(c.node_id ^ key < contact.node_id ^ key for c in [*others, node.contact])
+                    < K
+                ):
                     effects.extend(self._send(node.peer_id, contact.peer, "STORE", now, key, record))
         return effects
 
-    def _store(self, node: DHTNode, key: int, record: Record, now: int,
-               cached: bool = False) -> list[Effect]:
+    def _store(
+        self, node: DHTNode, key: int, record: Record, now: int, cached: bool = False
+    ) -> list[Effect]:
         previous = node.record(key, now)
         if record.expires_at <= now or (previous and previous.published_at > record.published_at):
             return []
@@ -140,7 +191,9 @@ class DHTNetwork:
             return []
         due = now + HOUR
         node.replica_due[key] = due
-        return [Timer(due, peer=node.peer_id, kind="replica", key=key)] if due < record.expires_at else []
+        return (
+            [Timer(due, peer=node.peer_id, kind="replica", key=key)] if due < record.expires_at else []
+        )
 
     def receive(self, wire: Rpc, now: int) -> list[Effect]:
         if wire.sender.peer != wire.source or wire.target not in self.nodes:
@@ -148,8 +201,11 @@ class DHTNetwork:
         node = self.nodes[wire.target]
         call = self._calls.get(wire.rpc_id)
         if wire.reply:
-            if (call is None or (call.request.source, call.request.target, call.request.method)
-                    != (wire.target, wire.source, wire.method)):
+            if call is None or (call.request.source, call.request.target, call.request.method) != (
+                wire.target,
+                wire.source,
+                wire.method,
+            ):
                 return []
             del self._calls[wire.rpc_id]
         effects: list[Effect] = [self._notice(wire, False)]
@@ -166,8 +222,17 @@ class DHTNetwork:
             record = node.record(wire.key, now)
         if wire.method in ("FIND_VALUE", "FIND_NODE") and record is None:
             contacts = tuple(node.table.closest(wire.key, K))
-        reply = Rpc(wire.target, wire.source, wire.rpc_id, wire.method, True,
-                    node.contact, wire.key, contacts, record)
+        reply = Rpc(
+            wire.target,
+            wire.source,
+            wire.rpc_id,
+            wire.method,
+            True,
+            node.contact,
+            wire.key,
+            contacts,
+            record,
+        )
         return [*effects, self._notice(reply, True), reply]
 
     def wake(self, timer: Timer, now: int) -> list[Effect]:
@@ -178,7 +243,9 @@ class DHTNetwork:
             if timer.kind == "publisher":
                 record = node.originals.get(timer.key)
                 if record and record.published_at + DAY <= now:
-                    return self.publish(self._internal("publisher"), timer.peer, timer.key, record.value, now)
+                    return self.publish(
+                        self._internal("publisher"), timer.peer, timer.key, record.value, now
+                    )
             elif timer.kind == "replica":
                 return self._republish(node, timer.key, now)
             return []
@@ -191,9 +258,14 @@ class DHTNetwork:
             del self._calls[timer.rpc_id]
         observation = self.nodes[wire.source].observations.setdefault(wire.target, {"failures": 0})
         observation.update(status="unresponsive", failures=observation["failures"] + 1)
-        return [Notice("kademlia_rpc_timeout", wire.source, {"peer": wire.target,
-                       "rpc_id": f"{wire.rpc_id:040x}", "method": wire.method}),
-                *self._settle(call, None, now)]
+        return [
+            Notice(
+                "kademlia_rpc_timeout",
+                wire.source,
+                {"peer": wire.target, "rpc_id": f"{wire.rpc_id:040x}", "method": wire.method},
+            ),
+            *self._settle(call, None, now),
+        ]
 
     def lookup(self, op_id: str, peer: str, key: int, now: int) -> list[Effect]:
         return self._start(Search(op_id, peer, key, "value"), now)
@@ -226,7 +298,9 @@ class DHTNetwork:
         if record is None or due is None or now < due:
             return []
         node.replica_due[key] = now + HOUR
-        return self._start(Search(self._internal("replica"), node.peer_id, key, "republish", record), now)
+        return self._start(
+            Search(self._internal("replica"), node.peer_id, key, "republish", record), now
+        )
 
     def maintenance(self, peer: str, now: int) -> list[Effect]:
         node = self.nodes[peer]
@@ -267,9 +341,16 @@ class DHTNetwork:
         effects: list[Effect] = []
         for contact in selection:
             search.queried.add(contact.peer)
-            effects.extend(self._send(search.origin, contact.peer,
-                                      "FIND_VALUE" if search.purpose == "value" else "FIND_NODE",
-                                      now, search.key, op_id=search.op_id))
+            effects.extend(
+                self._send(
+                    search.origin,
+                    contact.peer,
+                    "FIND_VALUE" if search.purpose == "value" else "FIND_NODE",
+                    now,
+                    search.key,
+                    op_id=search.op_id,
+                )
+            )
         if not search.round_peers:
             search.round_peers = pending | {c.peer for c in selection}
             search.round_best = nearest[0].node_id ^ search.key
@@ -288,10 +369,21 @@ class DHTNetwork:
                 search.stored.add(holder.peer)
             else:
                 search.store_pending.add(holder.peer)
-                effects.extend(self._send(node.peer_id, holder.peer, "STORE", now, search.key,
-                                          record=search.record, op_id=search.op_id))
+                effects.extend(
+                    self._send(
+                        node.peer_id,
+                        holder.peer,
+                        "STORE",
+                        now,
+                        search.key,
+                        record=search.record,
+                        op_id=search.op_id,
+                    )
+                )
         if not search.store_pending:
-            effects.extend(self._finish(search, bool(search.stored), None, tuple(sorted(search.stored)), now))
+            effects.extend(
+                self._finish(search, bool(search.stored), None, tuple(sorted(search.stored)), now)
+            )
         return effects
 
     def _settle(self, call: Outstanding, reply: Rpc | None, now: int) -> list[Effect]:
@@ -307,7 +399,9 @@ class DHTNetwork:
             if reply is not None:
                 search.stored.add(q.target)
             if not search.store_pending:
-                return self._finish(search, bool(search.stored), None, tuple(sorted(search.stored)), now)
+                return self._finish(
+                    search, bool(search.stored), None, tuple(sorted(search.stored)), now
+                )
             return []
         if search.storing:
             return []
@@ -321,20 +415,26 @@ class DHTNetwork:
                 misses = [c for c in search.nearest() if c.peer in search.responded]
                 if misses:
                     cache = misses[0]
-                    rank = sum(c.node_id ^ search.key < cache.node_id ^ search.key
-                               for c in search.contacts.values())
+                    rank = sum(
+                        c.node_id ^ search.key < cache.node_id ^ search.key
+                        for c in search.contacts.values()
+                    )
                     # §2.3 specifies exponential expiry by rank, without prescribing a base.
                     expires = min(reply.record.expires_at, now + max(1, DAY >> rank))
                     copy = Record(reply.record.value, reply.record.published_at, expires)
-                    effects.extend(self._send(q.source, cache.peer, "STORE", now, search.key,
-                                              record=copy, cached=True))
+                    effects.extend(
+                        self._send(
+                            q.source, cache.peer, "STORE", now, search.key, record=copy, cached=True
+                        )
+                    )
                 return [*effects, *self._finish(search, True, reply.record.value, (q.target,), now)]
             search.responded.add(q.target)
             search.add(reply.contacts)
         return self._drive(search, now)
 
-    def _finish(self, search: Search, success: bool, value: bytes | None,
-                peers: tuple[str, ...], now: int) -> list[Effect]:
+    def _finish(
+        self, search: Search, success: bool, value: bytes | None, peers: tuple[str, ...], now: int
+    ) -> list[Effect]:
         del self._searches[search.op_id]
         for token in [t for t, call in self._calls.items() if call.op_id == search.op_id]:
             call = self._calls[token]

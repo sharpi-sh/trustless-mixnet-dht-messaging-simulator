@@ -1,5 +1,5 @@
 from heapq import heappop, heappush
-from itertools import count
+from itertools import count, pairwise
 from random import Random
 
 import pytest
@@ -66,7 +66,7 @@ def test_random_outages_are_seeded_repeat_independently_and_ignore_playback():
     for uid in ("mix-1", "mix-2"):
         trace = [(t, up) for t, n, up, _ in first if n == uid]
         assert len(trace) > 3
-        for (t, up), (t2, up2) in zip(trace, trace[1:]):
+        for (t, up), (t2, up2) in pairwise(trace):
             assert up is not up2
             if up:
                 assert t2 - t >= 100

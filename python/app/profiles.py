@@ -1,4 +1,5 @@
 """Public references and simulator boundaries served with each generated network."""
+
 from typing import Any
 
 from .config import Config, Model
@@ -16,32 +17,70 @@ class Profile(Model):
 
 def profiles(c: Config) -> list[Profile]:
     return [
-        Profile(id="loopix-usenix-2017",name="Mixnet — Loopix (USENIX 2017)",year=2017,
+        Profile(
+            id="loopix-usenix-2017",
+            name="Mixnet — Loopix (USENIX 2017)",
+            year=2017,
             reference="https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-piotrowska.pdf",
-            parameters={"layers":3,"mu_per_second":c.mu_per_second,
-                "payload_rate_per_minute":c.payload_rate_per_minute,
-                "client_loop_rate_per_minute":c.client_loop_rate_per_minute,
-                "drop_cover_rate_per_minute":c.drop_cover_rate_per_minute,
-                "mix_loop_rate_per_minute":c.mix_loop_rate_per_minute,
-                "poll_interval_ms":c.polling_interval_ms,"poll_slots":c.poll_batch,
-                "sphinx":"UCL sphinxmix 0.0.6 forward packet, NIST P-224"},
-            operations=["Uniform per-layer sampling", "Sphinx integrity, replay and forwarding",
-                        "Independent exponential per-hop delays", "Poisson payload, loop and drop streams"],
-            boundaries=["Local logical datagrams and millisecond clock.",
-                        "Experimental egress adapter hands ciphertext to replicated storage. The egress is the final Sphinx hop for application packets.",
-                        "Provider association uses an ephemeral local identifier. Poll suppression is a user intervention."]),
-        Profile(id="kademlia-2002",name="DHT — Kademlia (2002)",year=2002,
+            parameters={
+                "layers": 3,
+                "mu_per_second": c.mu_per_second,
+                "payload_rate_per_minute": c.payload_rate_per_minute,
+                "client_loop_rate_per_minute": c.client_loop_rate_per_minute,
+                "drop_cover_rate_per_minute": c.drop_cover_rate_per_minute,
+                "mix_loop_rate_per_minute": c.mix_loop_rate_per_minute,
+                "poll_interval_ms": c.polling_interval_ms,
+                "poll_slots": c.poll_batch,
+                "sphinx": "UCL sphinxmix 0.0.6 forward packet, NIST P-224",
+            },
+            operations=[
+                "Uniform per-layer sampling",
+                "Sphinx integrity, replay and forwarding",
+                "Independent exponential per-hop delays",
+                "Poisson payload, loop and drop streams",
+            ],
+            boundaries=[
+                "Local logical datagrams and millisecond clock.",
+                "Experimental egress adapter hands ciphertext to replicated storage. The egress is the final Sphinx hop for application packets.",
+                "Provider association uses an ephemeral local identifier. Poll suppression is a user intervention.",
+            ],
+        ),
+        Profile(
+            id="kademlia-2002",
+            name="DHT — Kademlia (2002)",
+            year=2002,
             reference="https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf",
-            parameters={"id_bits":160,"k":20,"alpha":3,"nodes":c.dht_nodes},
-            operations=["XOR lookup","PING","STORE","FIND_NODE","FIND_VALUE"],
-            boundaries=["Simulated RPC transport and clock. Mailbox records are an experimental application format."]),
-        Profile(id="tor-abstraction",name="Tor abstraction",parameters={},
-            operations=["Local entry and egress"],boundaries=["One independent boundary per device; circuits and relays are outside this model."]),
-        Profile(id="replicated-storage",name="Replicated chunk-storage model",
-            parameters={"replicas":c.replicas,"chunk_bytes":c.chunk_bytes},
-            operations=["Ciphertext chunk replication","Hash-checked reconstruction"],
-            boundaries=["All distinct chunks are required. Storage operators can correlate sizes, timing and repeated identifiers."]),
-        Profile(id="device",name="Participant device",parameters={"encryption":"X25519 / HKDF-SHA-256 / AES-256-GCM"},
-            operations=["Recipient encryption","Local decryption"],
-            boundaries=["The reply public key is unverified. Sender authentication, whole-system forward secrecy and anonymity remain unproven."]),
+            parameters={"id_bits": 160, "k": 20, "alpha": 3, "nodes": c.dht_nodes},
+            operations=["XOR lookup", "PING", "STORE", "FIND_NODE", "FIND_VALUE"],
+            boundaries=[
+                "Simulated RPC transport and clock. Mailbox records are an experimental application format."
+            ],
+        ),
+        Profile(
+            id="tor-abstraction",
+            name="Tor abstraction",
+            parameters={},
+            operations=["Local entry and egress"],
+            boundaries=[
+                "One independent boundary per device; circuits and relays are outside this model."
+            ],
+        ),
+        Profile(
+            id="replicated-storage",
+            name="Replicated chunk-storage model",
+            parameters={"replicas": c.replicas, "chunk_bytes": c.chunk_bytes},
+            operations=["Ciphertext chunk replication", "Hash-checked reconstruction"],
+            boundaries=[
+                "All distinct chunks are required. Storage operators can correlate sizes, timing and repeated identifiers."
+            ],
+        ),
+        Profile(
+            id="device",
+            name="Participant device",
+            parameters={"encryption": "X25519 / HKDF-SHA-256 / AES-256-GCM"},
+            operations=["Recipient encryption", "Local decryption"],
+            boundaries=[
+                "The reply public key is unverified. Sender authentication, whole-system forward secrecy and anonymity remain unproven."
+            ],
+        ),
     ]

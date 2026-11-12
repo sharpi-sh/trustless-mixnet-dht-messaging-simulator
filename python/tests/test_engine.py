@@ -1,51 +1,68 @@
 import pytest
+
 from app.engine import Action, Config, Engine, Intervention
 
 
 def make():
-    sim=Engine(Config(random_seed=14,jitter_max_ms=0))
+    sim = Engine(Config(random_seed=14, jitter_max_ms=0))
     sim.lifecycle("run")
     return sim
 
 
-@pytest.mark.parametrize("drop,expected", [(False,"path_transit_completed"),(True,"path_transit_failed")])
-def test_inflight_policy_and_timing(drop,expected):
-    sim=make()
-    a,b="sender-1","tor-sender-1"
-    sim.transit(a,b,Action(),Action(),token="packet")
+@pytest.mark.parametrize(
+    "drop,expected", [(False, "path_transit_completed"), (True, "path_transit_failed")]
+)
+def test_inflight_policy_and_timing(drop, expected):
+    sim = make()
+    a, b = "sender-1", "tor-sender-1"
+    sim.transit(a, b, Action(), Action(), token="packet")
     sim.advance()
-    path=sim.topology.paths[sim.topology.path_id(a,b)]
-    assert len(path.active)==1
-    cmd=Intervention(target=path.id,token="cmd",command="path",enabled=False,drop_in_flight=drop)
+    path = sim.topology.paths[sim.topology.path_id(a, b)]
+    assert len(path.active) == 1
+    cmd = Intervention(target=path.id, token="cmd", command="path", enabled=False, drop_in_flight=drop)
     sim.intervene(cmd)
-    assert sim.intervene(cmd).outcome=="applied"
+    assert sim.intervene(cmd).outcome == "applied"
     sim.advance()
-    evt=next(e for e in sim.events if e.event_type==expected)
-    assert evt.simulation_time_ms==(0 if drop else 250)
+    evt = next(e for e in sim.events if e.event_type == expected)
+    assert evt.simulation_time_ms == (0 if drop else 250)
     assert not path.active and path.blocked
-    sim.transit(a,b,Action(),Action(),token="another")
-    while path.attempted<2:
+    sim.transit(a, b, Action(), Action(), token="another")
+    while path.attempted < 2:
         sim.advance()
-    assert path.failed==1+int(drop)
+    assert path.failed == 1 + int(drop)
 
 
 def test_step_pause_reset_and_boundary_scope():
-    sim=make()
+    sim = make()
     sim.lifecycle("pause")
-    sim.schedule(Intervention(command="delay",token="delay",delay_ms=20),123)
+    sim.schedule(Intervention(command="delay", token="delay", delay_ms=20), 123)
     sim.lifecycle("step")
-    assert (sim.status,sim.now,sim.step_delay_ms)==("paused",123,20)
-    boundary="Layer 1 ↔ Layer 2"
-    sim.intervene(Intervention(command="boundary",target=boundary,enabled=False,token="b"))
-    assert all(p.blocked==(p.boundary==boundary) for p in sim.topology.paths.values())
+    assert (sim.status, sim.now, sim.step_delay_ms) == ("paused", 123, 20)
+    boundary = "Layer 1 ↔ Layer 2"
+    sim.intervene(Intervention(command="boundary", target=boundary, enabled=False, token="b"))
+    assert all(p.blocked == (p.boundary == boundary) for p in sim.topology.paths.values())
     sim.lifecycle("reset")
-    assert sim.now==0 and sim.status=="ready" and all(not p.blocked for p in sim.topology.paths.values())
+    assert (
+        sim.now == 0
+        and sim.status == "ready"
+        and all(not p.blocked for p in sim.topology.paths.values())
+    )
 
 
 def test_scheduled_outage_uses_logical_clock():
     from app.config import Outage
-    sim=Engine(Config(pattern="scheduled",scheduled_outages=[Outage(node_id="mix-1",start_ms=10,duration_ms=500000)]))
+
+    sim = Engine(
+        Config(
+            pattern="scheduled",
+            scheduled_outages=[Outage(node_id="mix-1", start_ms=10, duration_ms=500000)],
+        )
+    )
     sim.lifecycle("run")
     list(sim.drain(12))
-    rows=[(e.simulation_time_ms,e.payload["online"]) for e in sim.events if e.event_type=="node_status_changed"]
-    assert rows==[(10,False),(500010,True)]
+    rows = [
+        (e.simulation_time_ms, e.payload["online"])
+        for e in sim.events
+        if e.event_type == "node_status_changed"
+    ]
+    assert rows == [(10, False), (500010, True)]

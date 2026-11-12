@@ -1,4 +1,5 @@
 """Bind once and hand the same loopback socket to Uvicorn."""
+
 import argparse
 import errno
 import socket
@@ -31,8 +32,11 @@ def main() -> None:
     with bind_local(args.first_port, args.last_port) as sock:
         port = sock.getsockname()[1]
         app.state.port = port
-        print(f"HTTP API: http://127.0.0.1:{port}\nWebSocket: ws://127.0.0.1:{port}/ws\n"
-              "Ready for frontend connection.", flush=True)
+        print(
+            f"HTTP API: http://127.0.0.1:{port}\nWebSocket: ws://127.0.0.1:{port}/ws\n"
+            "Ready for frontend connection.",
+            flush=True,
+        )
         uvicorn.Server(uvicorn.Config(app, loop="asyncio")).run(sockets=[sock])
 
 

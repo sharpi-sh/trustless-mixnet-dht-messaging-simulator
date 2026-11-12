@@ -1,8 +1,9 @@
+import itertools
 from random import Random
 
 import pytest
 
-from app.buckets import Contact, DHTRoutingTable, ID_SPACE, K, REFRESH_MS, xor_distance
+from app.buckets import ID_SPACE, REFRESH_MS, Contact, DHTRoutingTable, K, xor_distance
 
 
 def peer(uid):
@@ -40,7 +41,7 @@ def test_prefix_partition_is_contiguous_and_recency_survives_splits():
     assert buckets[0]["range_start"] == "0" * 40
     assert buckets[-1]["range_end"] == "f" * 40
     assert all(
-        int(a["range_end"], 16) + 1 == int(b["range_start"], 16) for a, b in zip(buckets, buckets[1:])
+        int(a["range_end"], 16) + 1 == int(b["range_start"], 16) for a, b in itertools.pairwise(buckets)
     )
     for bucket in buckets:
         rows = bucket["contacts"]

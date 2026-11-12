@@ -14,11 +14,44 @@ from app.config import Config, Model
 Role = Literal["sender", "receiver"]
 Direction = Literal["forward", "reply"]
 DeliveryState = Literal["staged", "sent", "delivered", "received", "replied", "failed"]
-_WORDS = (
-    "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor "
-    "incididunt ut labore et dolore magna aliqua ut enim ad minim veniam quis nostrud "
-    "exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat"
-).split()
+_WORDS = [
+    "lorem",
+    "ipsum",
+    "dolor",
+    "sit",
+    "amet",
+    "consectetur",
+    "adipiscing",
+    "elit",
+    "sed",
+    "do",
+    "eiusmod",
+    "tempor",
+    "incididunt",
+    "ut",
+    "labore",
+    "et",
+    "dolore",
+    "magna",
+    "aliqua",
+    "ut",
+    "enim",
+    "ad",
+    "minim",
+    "veniam",
+    "quis",
+    "nostrud",
+    "exercitation",
+    "ullamco",
+    "laboris",
+    "nisi",
+    "ut",
+    "aliquip",
+    "ex",
+    "ea",
+    "commodo",
+    "consequat",
+]
 _NAMES = {
     "sender": ("Alice", "Carol", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Judy", "Kai"),
     "receiver": ("Bob", "Lena", "Mira", "Noah", "Olivia", "Pete", "Quinn", "Rosa", "Sam", "Tess"),
