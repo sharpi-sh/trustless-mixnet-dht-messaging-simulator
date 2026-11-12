@@ -66,9 +66,16 @@ sequenceDiagram
 
     B->>BT: Poll for messages
     BT->>EP: Pull a fixed-size padded response
-    BT->>D: Resolve opaque handle and return manifest to Bob
-    BT->>V: Fetch replicas listed in the decrypted manifest
-    V-->>BT: Return encrypted fragments
+    loop Manifest pages and fragment reads
+        BT->>EP: Submit request containing single-use reply blocks
+        EP->>L1: Forward request through three mix layers
+        L1->>L2: Peel and delay
+        L2->>L3: Peel and delay
+        Note over L3,V: Service provider delivers to DHT gateway or selected vault
+        Note over D,V: Service puts response in the supplied reply blocks
+        Note over L1,L3: Each reply follows its precomputed return route through all three layers
+        EP-->>BT: Deliver to Bob's channel
+    end
     BT-->>B: Reconstruct and decrypt
     Note over B: Verify Alice against the pinned signing key, then accept her reply key
 
@@ -85,9 +92,16 @@ sequenceDiagram
 
     A->>AT: Poll for replies
     AT->>IP: Pull a fixed-size padded response
-    AT->>D: Resolve handle and return manifest to Alice
-    AT->>V: Fetch replicas listed in the decrypted manifest
-    V-->>AT: Return encrypted reply fragments
+    loop Manifest pages and fragment reads
+        AT->>IP: Submit request containing single-use reply blocks
+        IP->>L1: Forward request through three mix layers
+        L1->>L2: Peel and delay
+        L2->>L3: Peel and delay
+        Note over L3,V: Service provider delivers to DHT gateway or selected vault
+        Note over D,V: Service puts response in the supplied reply blocks
+        Note over L1,L3: Each reply follows its precomputed return route through all three layers
+        IP-->>AT: Deliver to Alice's channel
+    end
     AT-->>A: Reconstruct, decrypt and verify Bob's reply
 ```
 
@@ -166,7 +180,7 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 
 In **Network topology**, select a card or use **Inspect node** for local protocol state, paths and event history. **Fit graph** brings the columns into view. The upper lane carries forward traffic and the lower lane carries independently routed replies. **All transports** includes dormant physical links. Each message and reply has its own colour. Select a coloured line to inspect its recorded traversals and the cargo present at departure. The conversation panes show sent and received messages in local device-log order, with simulation timestamps. **Full screen** expands the diagram; use **Close full screen** or Escape to return. The Kademlia inspector shows contacts learned by the selected peer.
 
-Select a portrait at either edge of the diagram to open that participant’s chat. A green ring marks the selection on each side. The chat header shows the device’s simulated IP and latest send and receive times. Inspect a journey line to see which source address the receiving node observed on that traversal. With Outline Shadowsocks, Alice connects from her device IP to the proxy. The provider sees the proxy's IP when the proxy forwards her request. With direct access the provider sees Alice's device IP. With Tor the model shows separate entry and exit addresses. Bob uses his own selected channel for polling, retrieval and replies. These addresses describe the transport hop and are separate from sender signature verification.
+Select a portrait at either edge of the diagram to open that participant’s chat. A green ring marks the selection on each side. The chat header shows the device’s simulated IP and latest send and receive times. Inspect a journey line to see which source address the receiving node observed on that traversal. With Outline Shadowsocks, Alice connects from her device IP to the proxy. The provider sees the proxy's IP when the proxy forwards her request. With direct access the provider sees Alice's device IP. With Tor the model shows separate entry and exit addresses. Bob uses his selected channel to reach his provider. Manifest and fragment reads cross the mixnet in both directions. In the event timeline, select **Anonymous retrieval** to follow an exchange. These addresses describe the transport hop and are separate from sender signature verification.
 
 Use **Runtime controls** to change receiver polling, take a selected node offline, or block and restore a path or stage boundary. A block affects new attempts immediately. The optional in-flight control also drops packets already on those paths. The event timeline shows what Python observed, and the lineage ledger links keys, ciphertext and storage operations for the selected message.
 
