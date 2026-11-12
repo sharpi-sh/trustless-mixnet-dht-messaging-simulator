@@ -4,6 +4,9 @@
   import type { Snapshot, LabEvent, NodeDetails } from './types';
   import NetworkGraph from './NetworkGraph.svelte';
   import Inspector from './Inspector.svelte';
+  import Interventions from './Interventions.svelte';
+  import EventTimeline from './EventTimeline.svelte';
+  import LineageLedger from './LineageLedger.svelte';
 
   let {
     lab,
@@ -126,6 +129,7 @@
   </label>
 </div>
 {#if error}<p role="alert" class="error">{error}</p>{/if}
+<Interventions {lab} {selectedNode} {selectedPath} {client} {connected} />
 <Inspector
   {lab}
   {details}
@@ -136,6 +140,9 @@
   onNode={chooseNode}
   onPath={choosePath}
 />
+
+<EventTimeline {lab} {events} onNode={chooseNode} onPath={choosePath} />
+<LineageLedger {lab} onNode={chooseNode} />
 
 <style>
   .inspector-tools {

@@ -201,6 +201,7 @@ test('connect and create are separate, creation waits for a snapshot, deltas rep
   expect(get(client.store)).toMatchObject({
     pending: 0,
     error: 'Cannot resume',
+    feedback: 'Command rejected',
   });
   client.disconnect();
   expect(get(client.store)).toMatchObject({

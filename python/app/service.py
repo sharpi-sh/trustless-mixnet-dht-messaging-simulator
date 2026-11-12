@@ -209,6 +209,8 @@ class Service:
                 assert receipt.result is not None
                 return receipt.result.copy()
             try:
+                if cmd.epoch is not None and cmd.epoch != self.epochs[lab.id]:
+                    raise ValueError("Command belongs to a previous simulation epoch")
                 self._update(session, cmd)
             except (KeyError, ValueError) as exc:
                 session.receipts[cmd.command_id] = _Receipt(request, error=str(exc))
