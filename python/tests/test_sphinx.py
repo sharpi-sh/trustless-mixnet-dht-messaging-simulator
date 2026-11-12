@@ -101,4 +101,12 @@ def test_bounds_and_drop_command():
     first = network.peel("p", packet)
     assert first.drop is False and first.packet is not None
     second = network.peel("m", first.packet)
-    assert second.drop and second.next_id == "p"
+    assert second.drop and second.next_id is None and second.packet is None
+
+    packet = network.build(["p", "m", "p"], [7, 8], b"noise", drop_at=2)
+    for node_id in ("p", "m"):
+        out = network.peel(node_id, packet)
+        assert not out.drop and out.packet is not None
+        packet = out.packet
+    terminal = network.peel("p", packet)
+    assert terminal.drop and terminal.packet is None and terminal.payload is None

@@ -25,3 +25,8 @@ input, SHA-256 of the serialised output at every hop, and all replay tags.
 It uses test-only node scalars 137, 253, 397, 439 and 577. The original PyPI
 archive SHA-256 is
 `5655d079c1130343eecd20b254971a6f449b425253322f050a903d62947e83c9`.
+
+The build fixture fixes only the oracle's test ephemeral exponent and random
+header filler, and verifies port-produced packet bytes against the original
+constructor. The standalone Python 2 generation script accompanies the
+fixtures in the tests directory.

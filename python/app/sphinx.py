@@ -56,8 +56,8 @@ class SphinxNetwork:
             raise ValueError("Specify one delay per forwarding hop and an optional terminal zero")
         if any(type(delay) is not int or delay < 0 for delay in delays_ms):
             raise ValueError("Hop delays must be non-negative integer milliseconds")
-        if drop_at is not None and not 0 <= drop_at < len(delays_ms):
-            raise ValueError("Drop command must be read by a forwarding hop")
+        if drop_at is not None and not 0 <= drop_at < len(route):
+            raise ValueError("Drop command must be addressed to a route node")
         if any(node not in self._nodes for node in route):
             raise ValueError("Unknown Sphinx route node")
         destination = (b"127.0.0.1", 0, route[-1].encode())
@@ -76,6 +76,13 @@ class SphinxNetwork:
                 raise ValueError("Node address exceeds the Sphinx command capacity")
             routing.append(command)
         keys = [self._nodes[node].key.pointQ for node in route]
+        if drop_at == len(route) - 1:
+            # In the 2017 packet a provider drops a relay command addressed to a
+            # dummy recipient. Its extra onion layer is never sent or processed.
+            cover_recipient = b"cover-recipient"
+            routing.append(Nenc(((b"127.0.0.1", 0), True, None, 0.0, cover_recipient)))
+            keys.append(ECC.generate(curve="P-224").pointQ)
+            destination = (b"127.0.0.1", 0, cover_recipient)
         return encode(create_forward_message(PARAMS, routing, keys, destination, payload))
 
     def peel(self, node_id: str, packet: bytes) -> Hop:
@@ -106,7 +113,10 @@ class SphinxNetwork:
                     or seconds < 0
                 ):
                     raise SphinxException("Invalid Sphinx forwarding command")
-                hop = Hop(next_name.decode(), round(seconds * 1000), encode(inner), None, tag, drop)
+                if drop:
+                    hop = Hop(None, 0, None, None, tag, True)
+                else:
+                    hop = Hop(next_name.decode(), round(seconds * 1000), encode(inner), None, tag)
             elif command == [Dest_flag]:
                 dest, payload = receive_forward(PARAMS, inner[1])
                 if dest[2] != node_id.encode() or not isinstance(payload, bytes):
