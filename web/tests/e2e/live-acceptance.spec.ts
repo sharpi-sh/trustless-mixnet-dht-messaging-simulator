@@ -7,8 +7,13 @@ import { connect, createSimulation, expect, test } from './backend';
 const edited = 'Bob, meet me at the east pier.';
 async function configure(page: Page) {
   const field = (name: string) => page.getByLabel(name, { exact: true });
+  const addSender = page.getByRole('button', {
+    name: 'Add another sender',
+    exact: true,
+  });
+  await addSender.click();
+  await addSender.click();
   for (const [name, value] of Object.entries({
-    Senders: 3,
     'Mix nodes': 15,
     'Exchanges per conversation': 5,
     'Random seed': 254,
@@ -479,7 +484,9 @@ test('applies selected-receiver, node and stage-boundary interventions to Python
   backend,
 }) => {
   await connect(page, backend.url);
-  await page.getByLabel('Receivers', { exact: true }).fill('2');
+  await page
+    .getByRole('button', { name: 'Add another recipient', exact: true })
+    .click();
   const id = await createSimulation(page, backend),
     read = () => backend.state(id);
   const before = await read(),

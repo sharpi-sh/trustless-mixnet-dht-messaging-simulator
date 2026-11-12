@@ -110,7 +110,12 @@ for (const count of [6, 10, 20]) {
       await expect(mixes).toHaveValue('6');
       await expect(mixes).toHaveAttribute('min', '6');
       await mixes.fill(String(count));
-      await page.getByLabel('Senders', { exact: true }).fill('3');
+      const addSender = page.getByRole('button', {
+        name: 'Add another sender',
+        exact: true,
+      });
+      await addSender.click();
+      await addSender.click();
       await page.getByLabel('Random seed', { exact: true }).fill('32');
       const id = await createSimulation(page, backend);
       const snapshot = await backend.state(id);

@@ -27,10 +27,6 @@
     busy: boolean;
   } = $props();
   let cfg = $state<Config>(untrack(() => JSON.parse(JSON.stringify(defaults))));
-  const channelFields = [
-    ['sender_channel', 'Sender channel'],
-    ['recipient_channel', 'Recipient channel'],
-  ] as const;
   let submitting = $state(false);
   let error = $state('');
   let receivers = $derived(participantIds('receiver', cfg.receiver_count));
@@ -83,64 +79,71 @@
   <fieldset disabled={busy || submitting} class="shell">
     <section>
       <h2>Network setup</h2>
-      <div class="fields">
-        <label
-          >Senders<input
-            type="number"
-            min="1"
-            max="10"
-            step="1"
-            required
-            bind:value={cfg.sender_count}
-          /></label
-        >
-        <label
-          >Receivers<input
-            type="number"
-            min="1"
-            max="10"
-            step="1"
-            required
-            bind:value={cfg.receiver_count}
-          /></label
-        >
-        {#if cfg.participant_channels}
-          {#each [...senders, ...receivers] as id (id)}
-            {@const fallback = id.startsWith('sender-')
-              ? cfg.sender_channel
-              : cfg.recipient_channel}
-            <label>
-              {participantLabels[id] || id} channel
-              <select
-                aria-label={`${participantLabels[id] || id} channel`}
-                value={cfg.participant_channels[id] ?? fallback ?? 'tor'}
-                onchange={(event) => {
-                  cfg.participant_channels = {
-                    ...cfg.participant_channels,
-                    [id]: event.currentTarget.value as Channel,
-                  };
-                }}
-              >
-                {#each Object.entries(channelNames) as [value, name] (value)}
-                  <option {value}>{name}</option>
-                {/each}
-              </select>
-            </label>
+      {#each ['sender', 'recipient'] as role (role)}
+        {@const isSender = role === 'sender'}
+        {@const ids = isSender ? senders : receivers}
+        {@const countKey = isSender ? 'sender_count' : 'receiver_count'}
+        {@const channelKey = isSender ? 'sender_channel' : 'recipient_channel'}
+        <fieldset class="participants">
+          <legend>{isSender ? 'Senders' : 'Recipients'}</legend>
+          {#each ids as id, index (id)}
+            {@const name = participantLabels[id] || id}
+            <div class="participant">
+              <span>{name}</span>
+              {#if cfg.participant_channels}
+                <select
+                  aria-label={name + ' channel'}
+                  value={cfg.participant_channels[id] ??
+                    cfg[channelKey] ??
+                    'tor'}
+                  onchange={(event) => {
+                    cfg.participant_channels = {
+                      ...cfg.participant_channels,
+                      [id]: event.currentTarget.value as Channel,
+                    };
+                  }}
+                >
+                  {#each Object.entries(channelNames) as [value, label] (value)}
+                    <option {value}>{label}</option>
+                  {/each}
+                </select>
+              {/if}
+              {#if index > 0 && index === ids.length - 1}
+                <button
+                  type="button"
+                  class="secondary remove"
+                  aria-label={'Remove ' + name}
+                  onclick={() => {
+                    if (cfg.participant_channels)
+                      delete cfg.participant_channels[id];
+                    delete cfg.polling_overrides[id];
+                    cfg[countKey]--;
+                  }}>Remove</button
+                >
+              {/if}
+            </div>
           {/each}
-        {:else}
-          {#each channelFields as [key, label] (key)}
-            <label
-              >{label}
-              {#if cfg[key]}
-                <select aria-label={label} bind:value={cfg[key]}>
-                  {#each Object.entries(channelNames) as [value, name] (value)}<option
-                      {value}>{name}</option
-                    >{/each}
+          {#if !cfg.participant_channels}
+            <label>
+              {isSender ? 'Sender channel' : 'Recipient channel'}
+              {#if cfg[channelKey]}
+                <select bind:value={cfg[channelKey]}>
+                  {#each Object.entries(channelNames) as [value, label] (value)}
+                    <option {value}>{label}</option>
+                  {/each}
                 </select>
               {:else}<span>Tor only</span>{/if}
             </label>
-          {/each}
-        {/if}
+          {/if}
+          <button
+            class="secondary add"
+            type="button"
+            disabled={ids.length >= 10}
+            onclick={() => cfg[countKey]++}>Add another {role}</button
+          >
+        </fieldset>
+      {/each}
+      <div class="fields">
         <label
           >{cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}<input
             type="number"
@@ -371,6 +374,33 @@
   }
   h3 {
     font-size: 0.88rem;
+  }
+  .participants {
+    min-width: 0;
+    border: 0;
+    margin: 0 0 1rem;
+    padding: 0;
+  }
+  .participants legend {
+    padding: 0;
+    margin-bottom: 0.35rem;
+    font-weight: 650;
+  }
+  .participant {
+    display: grid;
+    grid-template-columns: minmax(4rem, 1fr) minmax(0, 2fr) 4.5rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+  }
+  .participant .remove {
+    padding-inline: 0.3rem;
+  }
+  .add {
+    margin-top: 0.35rem;
+  }
+  .add:disabled {
+    opacity: 0.55;
   }
   .fields,
   .outage {
