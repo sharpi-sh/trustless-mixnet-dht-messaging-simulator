@@ -235,6 +235,23 @@ class DHTNetwork:
         )
         return [*effects, self._notice(reply, True), reply]
 
+    def disconnect(self, peer: str) -> list[Effect]:
+        """Cancel local operations; packets already sent may still reach other peers."""
+        completions: list[Effect] = []
+        for search in list(self._searches.values()):
+            if search.origin == peer:
+                del self._searches[search.op_id]
+                if search.purpose != "join-refresh":
+                    completions.append(Complete(search.op_id, False, None, ()))
+        if self._join_refresh.pop(peer, None) is not None:
+            completions.append(Complete(f"join-{peer}", False, None, ()))
+        for token, call in list(self._calls.items()):
+            if call.request.source == peer:
+                if call.probe is not None:
+                    self.nodes[peer].table.cancel_probe(call.probe)
+                del self._calls[token]
+        return completions
+
     def wake(self, timer: Timer, now: int) -> list[Effect]:
         if timer.kind != "rpc":
             if now < timer.at:

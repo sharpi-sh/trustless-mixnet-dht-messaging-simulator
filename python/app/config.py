@@ -59,6 +59,11 @@ class Config(Model):
     ack_timeout_ms: int = Field(1000, ge=1, le=60000)
     step_delay_ms: int = Field(500, ge=1, le=2000)
 
+    @property
+    def rpc_timeout_ms(self) -> int:
+        max_leg = self.base_transit_delay_ms + self.jitter_max_ms
+        return max(2000, 2 * max_leg + self.ack_timeout_ms)
+
     @model_validator(mode="after")
     def check_ranges(self) -> Self:
         if self.min_nodes > self.max_nodes or self.jitter_min_ms > self.jitter_max_ms:

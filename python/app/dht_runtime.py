@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 
 @dataclass(kw_only=True)
 class Join(Action):
-    bootstrap: str | None = None
+    due: int = 0
 
 
 @dataclass(kw_only=True)
 class Maintenance(Action):
-    pass
+    periodic: bool = True
 
 
 @dataclass(kw_only=True)
@@ -52,12 +52,51 @@ class DHTRuntime:
     def __init__(self, sim: Engine):
         self.sim = sim
         self.pending: dict[str, DHTRequest] = {}
+        self.joined: set[str] = set()
+        self._joining: set[str] = set()
+        self._next_join: dict[str, int] = {}
+        self._backoff: dict[str, int] = {}
+        self._started = False
 
     def start(self) -> None:
-        bootstrap = self.sim.topology.dht_ids[0]
-        for i, uid in enumerate(self.sim.topology.dht_ids):
-            self.sim.schedule(Join(source=uid, bootstrap=bootstrap if i else None))
+        if self._started:
+            return
+        self._started = True
+        for uid in self.sim.topology.dht_ids:
+            self._join_later(uid, 0)
             self.sim.schedule(Maintenance(source=uid), 3600000 + self.sim.rng.randrange(60000))
+
+    def _join_later(self, peer: str, delay: int) -> None:
+        if peer in self.joined or peer in self._joining or not self.sim.topology.nodes[peer].online:
+            return
+        due = self.sim.now + delay
+        if peer in self._next_join and self._next_join[peer] <= due:
+            return
+        self._next_join[peer] = due
+        self.sim.schedule(Join(source=peer, due=due), delay)
+
+    def availability(self, peer: str, online: bool) -> None:
+        if not self._started or peer not in self.sim.dht.nodes:
+            return
+        if online:
+            self._join_later(peer, 0)
+            self.sim.schedule(Maintenance(source=peer, periodic=False))
+        else:
+            self._next_join.pop(peer, None)
+            self.effects(self.sim.dht.disconnect(peer), Action(source=peer))
+
+    def _join_finished(self, peer: str, success: bool) -> None:
+        self._joining.discard(peer)
+        ctx = Action(source=peer)
+        self.sim.emit("kademlia_join_completed", ctx, peer=peer, success=success)
+        if success:
+            self.joined.add(peer)
+            self._backoff.pop(peer, None)
+        elif self.sim.topology.nodes[peer].online:
+            delay = self._backoff.get(peer, min(60_000, self.sim.dht.timeout_ms))
+            self._backoff[peer] = min(60_000, 2 * delay)
+            self._join_later(peer, delay)
+            self.sim.emit("kademlia_join_retry_scheduled", ctx, delay_ms=delay)
 
     def effects(self, effects: list[Effect], action: Action) -> None:
         for effect in effects:
@@ -120,21 +159,25 @@ class DHTRuntime:
                         )
                     )
                 elif effect.op_id.startswith("join-"):
-                    self.sim.emit(
-                        "kademlia_join_completed", action, peer=effect.op_id[5:], success=effect.success
-                    )
+                    self._join_finished(effect.op_id[5:], effect.success)
 
     def handle(self, action: Action) -> bool:
         sim = self.sim
         dht = sim.dht
         now = sim.now
         if isinstance(action, Join):
-            if sim.topology.nodes[action.source].online:
-                self.effects(dht.join(action.source, action.bootstrap, now), action)
+            peer = action.source
+            if self._next_join.get(peer) == action.due:
+                del self._next_join[peer]
+                if sim.topology.nodes[peer].online:
+                    self._joining.add(peer)
+                    seed = sim.topology.dht_ids[0]
+                    self.effects(dht.join(peer, None if peer == seed else seed, now), action)
         elif isinstance(action, Maintenance):
             if sim.topology.nodes[action.source].online:
                 self.effects(dht.maintenance(action.source, now), action)
-            sim.schedule(action, 3600000)
+            if action.periodic:
+                sim.schedule(action, 3600000)
         elif isinstance(action, DHTRequest):
             self.pending[action.token] = action
             if not sim.topology.nodes[action.source].online:
@@ -145,7 +188,8 @@ class DHTRuntime:
                 effects = dht.publish(action.token, action.source, action.key, action.value, now)
             self.effects(effects, action)
         elif isinstance(action, IncomingRPC):
-            self.effects(dht.receive(action.wire, now), action)
+            if sim.topology.nodes[action.wire.target].online:
+                self.effects(dht.receive(action.wire, now), action)
         elif isinstance(action, RPCTimer):
             owner = action.timer.peer
             if not owner or sim.topology.nodes[owner].online:

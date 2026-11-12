@@ -49,7 +49,13 @@ def test_three_senders_five_exchanges_with_polling_outages_and_retry():
     assert kinds["dht"] == kinds["storage"] == 5
     profiles = {p["id"]: p for p in initial["profiles"]}
     assert profiles["loopix-usenix-2017"]["year"] == 2017
-    assert profiles["kademlia-2002"]["parameters"] == {"k": 20, "alpha": 3, "id_bits": 160, "nodes": 5}
+    assert profiles["kademlia-2002"]["parameters"] == {
+        "k": 20,
+        "alpha": 3,
+        "id_bits": 160,
+        "nodes": 5,
+        "rpc_timeout_ms": 2000,
+    }
     messages = {m["id"]: m for m in initial["messages"]}
     assert len(messages) == 30 and len({m["conversation_id"] for m in messages.values()}) == 3
     edited = "Bob, meet me at the east pier."
