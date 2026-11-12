@@ -61,3 +61,37 @@ def test_blocked_service_attachment_fails_read_without_bypassing_mixnet():
     assert sim.next_callback() == Callback(token="failure")
     assert not sim.retrieval._exchanges
     assert not [e for e in sim.events if e.event_type == "retrieval_request_delivered"]
+
+
+def test_only_live_single_use_replies_can_reach_the_device():
+    sim = Harness()
+    service = "storage-2"
+    request, reply, failure = (
+        Callback(token="request"),
+        Callback(token="reply"),
+        Callback(token="failure"),
+    )
+    ticket = sim.retrieval.request("sender-1", service, b"read", 2, request, failure)
+    assert sim.next_callback().ticket == ticket
+    # The service withholds its response until the scheduler expires the client secret.
+    assert sim.next_callback() == failure
+    sim.retrieval.reply(ticket, b"OK", reply, failure)
+    assert not sim.queue
+    assert not sim.retrieval._exchanges
+    assert not [e for e in sim.events if e.event_type == "retrieval_reply_received"]
+
+
+def test_failed_response_retires_unused_surbs_and_runs_only_one_failure_callback():
+    sim = Harness()
+    service = "storage-2"
+    failure = Callback(token="failure")
+    ticket = sim.retrieval.request("sender-1", service, b"read", 2048, Callback(), failure)
+    assert sim.next_callback().ticket == ticket
+    uid = sim.topology.path_id(sim.topology.service_gateways[service], service)
+    sim.intervene(Intervention(command="path", target=uid, token="block-response", enabled=False))
+    sim.retrieval.reply(ticket, bytes(2048), Callback(token="reply"), failure)
+    assert sim.next_callback() == failure
+    list(sim.drain(100))
+    assert not sim.callbacks
+    assert not sim.retrieval._exchanges
+    assert sum(e.event_type == "retrieval_transport_failed" for e in sim.events) == 1
