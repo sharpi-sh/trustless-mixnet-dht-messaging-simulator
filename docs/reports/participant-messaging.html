@@ -1,0 +1,279 @@
+<!doctype html><html lang="en-GB"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Participant messaging build report</title>
+<style>body{max-width:76ch;margin:3rem auto;padding:0 1rem;font:16px/1.55 system-ui;color:#192e2a}h1,h2{line-height:1.15}table{width:100%;border-collapse:collapse}th,td{padding:.55rem;text-align:left;border-bottom:1px solid #cad6cf}td:first-child{white-space:nowrap}pre{overflow:auto;font-size:.8rem;background:#f2f4f3;padding:1rem}summary{cursor:pointer;padding:.45rem 0}</style>
+<h1>Participant messaging build report</h1><p>13 November 2026 · Local development branch · Bangkok time (UTC+7)</p>
+<p>Three senders can use Tor, Outline Shadowsocks and direct access in the same simulation. Each enabled, online client polls at a fixed interval even when an earlier poll is in flight. The graph shows poll movements and results. Visible message lines measure 1.25 CSS pixels, with a 13-pixel pointer target. The chat filter counts received messages per contact.</p>
+<h2>Timing</h2><p>Elapsed time from the integration checkpoint to verification: <strong>6m 32s</strong>. Parallel tasks overlap. Each interval below measures wall time since the preceding milestone.</p>
+<table><thead><tr><th>Local time</th><th>Interval</th><th>Milestone</th><th>Commit</th></tr></thead><tbody><tr><td>04:46:20</td><td>0m 00s</td><td>Integrated the verified connection controls and began the participant feature</td><td><code>545e12e</code></td></tr><tr><td>04:47:06</td><td>0m 46s</td><td>Reduced journey line widths while retaining the pointer target</td><td><code>21416e4</code></td></tr><tr><td>04:49:04</td><td>1m 58s</td><td>Verified incoming-contact portraits and receipt counts</td><td><code>5f25335</code></td></tr><tr><td>04:49:28</td><td>0m 24s</td><td>Verified timer-driven provider polling and concurrent requests</td><td><code>d7d41dc</code></td></tr><tr><td>04:49:55</td><td>0m 27s</td><td>Verified individual connection selections</td><td><code>f4157c0</code></td></tr><tr><td>04:50:32</td><td>0m 37s</td><td>Corrected the browser assertion for the asynchronous first departure</td><td><code>3372312</code></td></tr><tr><td>04:52:52</td><td>2m 20s</td><td>Completed integrated verification and generated this report</td><td><code></code></td></tr></tbody></table>
+<h2>Delegated work</h2><ul><li><code>participant_channels</code> implemented per-device configuration, API compatibility and mixed-channel tests.</li><li><code>poll_timers</code> implemented overlapping timer-driven polls, cancellation and playback publication.</li><li><code>inbox_avatars</code> implemented contact portraits, counts, keyboard filtering and interaction tests.</li></ul>
+<p>The primary agent integrated the features, adjusted graph strokes, surfaced poll timing, updated the build specification and ran the integrated checks.</p>
+<h2>Verification</h2><p>212 Python tests ran on the host and two process-startup tests ran inside a container with an isolated loopback network. Browser tests used a temporary Node loopback transport carrying HTTP and WebSocket traffic to the Python application. The user’s backend on port 8000 was left running. Python application coverage was 95%. Frontend coverage was 61.01% of statements and 62.94% of lines.</p>
+<h2>Test output</h2><details><summary>Python tests, linting, type-checking and coverage</summary><pre>All checks passed!
+80 files already formatted
+Success: no issues found in 39 source files
+........................................................................ [ 33%]
+........................................................................ [ 67%]
+....................................................................     [100%]
+=============================== warnings summary ===============================
+../.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Users/jj/Dev/sharpi-sh-trustless-messaging/trustless-mixnet-dht-messaging-simulator/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform darwin, python 3.14.7-final-0 _______________
+
+Name                         Stmts   Miss  Cover   Missing
+----------------------------------------------------------
+app/__init__.py                  0      0   100%
+app/api_models.py               74      0   100%
+app/availability.py            120      2    98%   162, 166
+app/buckets.py                 124      6    95%   31, 116, 124-126, 144
+app/config.py                   79      2    97%   91, 102
+app/crypto.py                  104      4    96%   35, 157-158, 160
+app/devices.py                  42      1    98%   66
+app/dht_runtime.py             121      3    98%   63, 74, 184
+app/engine.py                  227     11    95%   68-71, 101, 156, 158, 178, 303, 327, 338
+app/events.py                   10      0   100%
+app/kad_types.py                49      0   100%
+app/kademlia.py                305     28    91%   45, 61, 133, 151, 181, 185, 187, 200, 247, 251, 268, 275, 336, 401, 409-410, 424, 469-473, 475-480
+app/lab.py                     198     14    93%   68, 79, 82, 109, 137-139, 160, 204-205, 207, 214, 248, 271
+app/lineage.py                  20      0   100%
+app/loopix.py                   48      1    98%   85
+app/mailbox.py                 244     20    92%   177, 191-192, 205-215, 229-230, 245, 290, 324-325, 340, 353, 368, 375, 384-388, 397
+app/network.py                  46      0   100%
+app/packet_runtime.py          261     13    95%   79, 82, 171-172, 212, 229, 308, 339-342, 398, 442
+app/participants.py            100      0   100%
+app/polling.py                 110      4    96%   73, 116-118
+app/profiles.py                 17      0   100%
+app/retrieval.py               220     14    94%   104, 165-166, 180-182, 236, 245, 255, 303, 306, 313, 358-359
+app/server.py                  196     16    92%   138-139, 146-147, 165-166, 171-172, 184-185, 192, 230, 241-242, 289, 301
+app/service.py                 236     20    92%   40, 86, 127, 131-132, 154, 161, 230, 232, 237, 245, 251, 280, 288, 292, 309, 312, 318, 326, 333
+app/simulation.py               35      1    97%   34
+app/sphinx.py                  180     12    93%   145, 155, 192, 216, 221, 228, 241, 249, 262, 265, 268-269
+app/sphinx_ref/__init__.py       0      0   100%
+app/sphinx_ref/client.py        88      4    95%   47, 64, 138, 188
+app/sphinx_ref/node.py          26      1    96%   39
+app/sphinx_ref/params.py        89      2    98%   113, 121
+app/sphinx_ref/wire.py          39      3    92%   49, 60, 63
+app/steps.py                    24      0   100%
+app/storage.py                 161      5    97%   29, 57, 89, 98, 193
+app/storage_simulation.py       22      0   100%
+app/stream.py                   62      3    95%   99-101
+app/topology.py                130      0   100%
+app/traffic.py                 159      7    96%   83, 90, 97, 104, 154, 187, 216
+app/vault_runtime.py           150      4    97%   216-217, 229, 263
+----------------------------------------------------------
+TOTAL                         4116    201    95%
+212 passed, 1 warning in 53.58s
+</pre></details><details><summary>Process startup and shutdown in an isolated network</summary><pre>..                                                                       [100%]
+2 passed in 2.34s
+</pre></details><details><summary>Frontend tests, linting, type-checking, coverage and production build</summary><pre>
+&gt; trustless-messaging-lab@0.1.0 lint
+&gt; eslint . &amp;&amp; prettier --check .
+
+Checking formatting...
+All matched files use Prettier code style!
+
+&gt; trustless-messaging-lab@0.1.0 check
+&gt; svelte-kit sync &amp;&amp; svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /Users/jj/Dev/sharpi-sh-trustless-messaging/trustless-mixnet-dht-messaging-simulator/web
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings
+
+&gt; trustless-messaging-lab@0.1.0 coverage
+&gt; vitest run --coverage
+
+
+ RUN  v5.1.0 /Users/jj/Dev/sharpi-sh-trustless-messaging/trustless-mixnet-dht-messaging-simulator/web
+      Coverage enabled with v8
+
+
+ Test Files  12 passed (12)
+      Tests  44 passed (44)
+   Start at  04:49:59
+   Duration  2.27s (transform 75%, import 13%, worker 7%, tests 5%)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   61.01 |    54.43 |   58.78 |   62.94 |                   
+ lib               |   62.72 |    58.02 |   62.21 |   64.86 |                   
+  ...ration.svelte |       0 |        0 |       0 |       0 | 28-339            
+  ...Column.svelte |   98.24 |    89.18 |    92.3 |   97.67 | 44                
+  ...meline.svelte |       0 |        0 |       0 |       0 | 22-147            
+  ...hGlyph.svelte |     100 |    76.92 |     100 |     100 | 14,22-24          
+  ...vation.svelte |   89.47 |    57.89 |     100 |   94.11 | 52                
+  Inspector.svelte |    64.8 |    55.76 |   67.85 |   67.18 | ...19-524,577-578 
+  ...ntions.svelte |   77.14 |    57.77 |   88.23 |      75 | 43-70,194         
+  ...Ledger.svelte |       0 |        0 |       0 |       0 | 5-56              
+  ...Editor.svelte |       0 |        0 |       0 |       0 | 16-112            
+  ...kGraph.svelte |   54.85 |    41.44 |   51.66 |    54.2 | ...07,848-916,924 
+  ...resses.svelte |   77.77 |       20 |   33.33 |      75 | 6-8               
+  Workspace.svelte |       0 |        0 |       0 |       0 | 21-175            
+  api.ts           |   80.23 |    70.11 |   82.35 |   83.98 | ...56,471,487-489 
+  configuration.ts |   95.34 |    82.75 |     100 |   95.12 | 114,118           
+  graph-layout.ts  |   91.55 |    83.08 |   97.87 |   91.97 | ...49-657,679-680 
+  inspector.ts     |      84 |    84.78 |    87.5 |   89.47 | 17-18             
+  ...n-controls.ts |    90.9 |    92.85 |     100 |     100 | 8                 
+  timeline.ts      |   64.61 |    42.55 |      75 |   67.24 | ...74,144,147-154 
+ routes            |   31.37 |     7.52 |   13.04 |   31.91 |                   
+  +page.svelte     |   31.37 |     7.52 |   13.04 |   31.91 | ...55,228-382,389 
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 61.01% ( 1116/1829 )
+Branches     : 54.43% ( 712/1308 )
+Functions    : 58.78% ( 194/330 )
+Lines        : 62.94% ( 992/1576 )
+================================================================================
+
+&gt; trustless-messaging-lab@0.1.0 build
+&gt; vite build
+
+vite v8.3.8 building ssr environment for production...
+transforming...
+✓ 173 modules transformed.
+rendering chunks...
+computing gzip size...
+.svelte-kit/output/server/.vite/manifest.json                         2.80 kB │ gzip:  0.51 kB
+.svelte-kit/output/server/_app/immutable/assets/_page.DfC03189.css   31.40 kB │ gzip:  7.19 kB
+.svelte-kit/output/server/entries/pages/_layout.ts.js                 0.10 kB │ gzip:  0.11 kB │ map:   0.18 kB
+.svelte-kit/output/server/env.js                                      0.29 kB │ gzip:  0.18 kB │ map:   0.57 kB
+.svelte-kit/output/server/entries/fallbacks/layout.svelte.js          0.29 kB │ gzip:  0.22 kB │ map:   0.34 kB
+.svelte-kit/output/server/chunks/index-server.js                      0.41 kB │ gzip:  0.26 kB │ map:   1.63 kB
+.svelte-kit/output/server/entries/fallbacks/error.svelte.js           1.06 kB │ gzip:  0.42 kB │ map:   2.58 kB
+.svelte-kit/output/server/index.js                                    2.24 kB │ gzip:  0.90 kB │ map:   3.32 kB
+.svelte-kit/output/server/chunks/server-errors.js                    23.96 kB │ gzip:  4.49 kB │ map:  34.73 kB
+.svelte-kit/output/server/chunks/server.js                           46.03 kB │ gzip: 12.79 kB │ map: 155.12 kB
+.svelte-kit/output/server/remote-entry.js                            54.53 kB │ gzip: 11.90 kB │ map:  90.21 kB
+.svelte-kit/output/server/chunks/internal.js                         90.32 kB │ gzip: 24.82 kB │ map: 196.98 kB
+.svelte-kit/output/server/chunks/instance.js                        116.84 kB │ gzip: 31.50 kB │ map: 238.33 kB
+.svelte-kit/output/server/entries/pages/_page.svelte.js             145.64 kB │ gzip: 34.65 kB │ map: 276.44 kB
+
+✓ built in 511ms
+Analysing routes
+(node:16207) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Building app
+vite v8.3.8 building client environment for production...
+transforming...
+✓ 248 modules transformed.
+rendering chunks...
+computing gzip size...
+.svelte-kit/output/client/_app/version.json                           0.02 kB │ gzip:  0.04 kB
+.svelte-kit/output/client/.vite/manifest.json                         3.20 kB │ gzip:  0.58 kB
+.svelte-kit/output/client/_app/immutable/assets/2.DfC03189.css       31.40 kB │ gzip:  7.19 kB
+.svelte-kit/output/client/_app/immutable/entry/payload.DSmR2FwN.js    0.06 kB │ gzip:  0.07 kB
+.svelte-kit/output/client/_app/immutable/nodes/1.BC_BKo3i.js          0.32 kB │ gzip:  0.24 kB
+.svelte-kit/output/client/_app/immutable/nodes/0.CB9fQmDP.js          0.33 kB │ gzip:  0.27 kB
+.svelte-kit/output/client/_app/immutable/entry/start.C1quLtGk.js      0.52 kB │ gzip:  0.31 kB
+.svelte-kit/output/client/_app/immutable/entry/app.BdBNZYCD.js        1.09 kB │ gzip:  0.55 kB
+.svelte-kit/output/client/_app/immutable/chunks/Bjy-W4x2.js           1.36 kB │ gzip:  0.65 kB
+.svelte-kit/output/client/_app/immutable/chunks/DclECHGd.js           1.63 kB │ gzip:  0.83 kB
+.svelte-kit/output/client/_app/immutable/chunks/DhV47g8j.js           4.56 kB │ gzip:  2.05 kB
+.svelte-kit/output/client/_app/immutable/chunks/CPmmHtTs.js          39.53 kB │ gzip: 14.61 kB
+.svelte-kit/output/client/_app/immutable/chunks/BKbLHvB1.js          47.26 kB │ gzip: 18.22 kB
+.svelte-kit/output/client/_app/immutable/nodes/2.DTaLh3UR.js        140.29 kB │ gzip: 46.09 kB
+
+✓ built in 372ms
+(node:16207) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Prerendering
+
+Run npm run preview to preview your production build locally.
+
+&gt; Using @sveltejs/adapter-static
+Wrote site to &quot;build&quot;
+✔ done
+</pre></details><details><summary>Browser acceptance after correction</summary><pre>
+Running 15 tests using 2 workers
+
+(node:16683) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+(node:16684) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/15] tests/e2e/anonymous-retrieval.spec.ts:3:1 › shows mixed manifest and fragment exchanges during a signed round trip
+[2/15] tests/e2e/channels.spec.ts:41:1 › shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’s direct IP
+[3/15] tests/e2e/channels.spec.ts:190:1 › assigns three different channels to three senders in the same simulation
+[4/15] tests/e2e/control-panel.spec.ts:4:1 › displays an unavailable Python endpoint without enabling simulation creation
+[5/15] tests/e2e/control-panel.spec.ts:23:1 › creates, edits and controls a real simulation
+[6/15] tests/e2e/first-message-hop.spec.ts:3:1 › first-message stepping pauses at a real device departure and becomes available after reset
+[7/15] tests/e2e/control-panel.spec.ts:76:1 › reconnects to the same simulation after a WebSocket transport failure
+[8/15] tests/e2e/first-message-hop.spec.ts:69:1 › Bob records empty timed polls before Alice sends any packets
+[9/15] tests/e2e/graph.spec.ts:102:3 › renders 10 mixes in ordered columns and inspects the live topology
+[10/15] tests/e2e/live-acceptance.spec.ts:86:1 › completes the live thirty-transmission scenario with edited text, polling, blocked routing and recovery
+[11/15] tests/e2e/graph.spec.ts:102:3 › renders 20 mixes in ordered columns and inspects the live topology
+[12/15] tests/e2e/ordinary-run.spec.ts:7:3 › ordinary Run moves Alice’s packet and preserves the first transit with default settings
+[13/15] tests/e2e/ordinary-run.spec.ts:7:3 › ordinary Run moves Alice’s packet and preserves the first transit after 1,238 startup steps
+[14/15] tests/e2e/standalone.spec.ts:3:1 › opens the laboratory independently of Python
+[15/15] tests/e2e/live-acceptance.spec.ts:476:1 › applies selected-receiver, node and stage-boundary interventions to Python
+  15 passed (1.1m)
+</pre></details><details><summary>Initial browser run and asynchronous assertion failure</summary><pre>
+Running 15 tests using 1 worker
+
+(node:16011) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/15] tests/e2e/anonymous-retrieval.spec.ts:3:1 › shows mixed manifest and fragment exchanges during a signed round trip
+[2/15] tests/e2e/channels.spec.ts:41:1 › shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’s direct IP
+[3/15] tests/e2e/channels.spec.ts:190:1 › assigns three different channels to three senders in the same simulation
+[4/15] tests/e2e/control-panel.spec.ts:4:1 › displays an unavailable Python endpoint without enabling simulation creation
+[5/15] tests/e2e/control-panel.spec.ts:23:1 › creates, edits and controls a real simulation
+[6/15] tests/e2e/control-panel.spec.ts:76:1 › reconnects to the same simulation after a WebSocket transport failure
+[7/15] tests/e2e/first-message-hop.spec.ts:3:1 › first-message stepping pauses at a real device departure and becomes available after reset
+[8/15] tests/e2e/first-message-hop.spec.ts:69:1 › Bob records empty timed polls before Alice sends any packets
+  1) tests/e2e/first-message-hop.spec.ts:69:1 › Bob records empty timed polls before Alice sends any packets 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: &quot;paused&quot;
+    Received: &quot;running&quot;
+
+      83 |   await expect(status).toContainText(/Last request \d+ ms · Empty at \d+ ms/);
+      84 |   const snapshot = await backend.state(id);
+    &gt; 85 |   expect(snapshot.status).toBe(&#x27;paused&#x27;);
+         |                           ^
+      86 |   expect(
+      87 |     snapshot.devices
+      88 |       .find((d) =&gt; d.id === &#x27;receiver-1&#x27;)
+        at /Users/jj/Dev/sharpi-sh-trustless-messaging/trustless-mixnet-dht-messaging-simulator/web/tests/e2e/first-message-hop.spec.ts:85:27
+
+    Error Context: test-results/first-message-hop-Bob-reco-9e8ab-ore-Alice-sends-any-packets/error-context.md
+
+
+(node:16323) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[9/15] tests/e2e/graph.spec.ts:102:3 › renders 10 mixes in ordered columns and inspects the live topology
+[10/15] tests/e2e/graph.spec.ts:102:3 › renders 20 mixes in ordered columns and inspects the live topology
+[11/15] tests/e2e/live-acceptance.spec.ts:86:1 › completes the live thirty-transmission scenario with edited text, polling, blocked routing and recovery
+[12/15] tests/e2e/live-acceptance.spec.ts:476:1 › applies selected-receiver, node and stage-boundary interventions to Python
+[13/15] tests/e2e/ordinary-run.spec.ts:7:3 › ordinary Run moves Alice’s packet and preserves the first transit with default settings
+[14/15] tests/e2e/ordinary-run.spec.ts:7:3 › ordinary Run moves Alice’s packet and preserves the first transit after 1,238 startup steps
+[15/15] tests/e2e/standalone.spec.ts:3:1 › opens the laboratory independently of Python
+  1 failed
+    tests/e2e/first-message-hop.spec.ts:69:1 › Bob records empty timed polls before Alice sends any packets 
+  14 passed (1.5m)
+</pre></details><details><summary>Focused confirmation after correction</summary><pre>
+Running 2 tests using 1 worker
+
+(node:16458) Warning: The &#x27;NO_COLOR&#x27; env is ignored due to the &#x27;FORCE_COLOR&#x27; env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/2] tests/e2e/first-message-hop.spec.ts:3:1 › first-message stepping pauses at a real device departure and becomes available after reset
+[2/2] tests/e2e/first-message-hop.spec.ts:69:1 › Bob records empty timed polls before Alice sends any packets
+  2 passed (3.6s)
+</pre></details><details><summary>Graphify refresh</summary><pre>Re-extracting code files in . (no LLM needed)...
+[graphify watch] 7 file(s) not classified (no supported extension or shebang), skipped: .gitignore, .prettierignore, COPYING, COPYING.LESSER, lab.css, test_sphinx_oracle.py2 (+1 more)
+  AST cache: 96/146 files served from cache (65%); 50 to extract
+  AST extraction: 50/50 uncached files (100%) [10 workers]
+  warning: 12 code file(s) yielded no symbols (0.02 MB) — a data file, or source this extractor models no symbols for: python/pyproject.toml, web/eslint.config.js, web/playwright.config.ts, web/src/lib/avatars.test.ts, web/src/lib/conversation.test.ts (+7 more)
+[graphify watch] No code-graph topology changes detected; outputs left untouched.
+Code graph updated. For doc/paper/image changes run /graphify --update in your AI assistant.
+Tip: set GEMINI_API_KEY or GOOGLE_API_KEY to use Gemini for semantic extraction.
+</pre></details></html>
