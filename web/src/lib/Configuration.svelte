@@ -144,7 +144,7 @@
         <label
           >{cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}<input
             type="number"
-            min="10"
+            min="6"
             max="20"
             step="1"
             required
@@ -154,7 +154,7 @@
         {#if cfg.randomise_count}<label
             >Maximum mix nodes<input
               type="number"
-              min="10"
+              min="6"
               max="20"
               step="1"
               required

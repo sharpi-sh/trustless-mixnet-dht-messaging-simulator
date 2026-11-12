@@ -202,7 +202,7 @@ The endpoint input is for a local development backend. Do not expose the Python 
 - The configuration form is available after connecting to the backend.
 - Sender count is configurable from 1 to 10.
 - Receiver count is configurable from 1 to 10.
-- Mixnet node count is configurable within the initial rule range of 10 to 20.
+- Mixnet node count is configurable within the range of 6 to 20, defaulting to 6.
 - Sender count, receiver count and mixnet node count appear together in the same network setup panel.
 - The user can choose a fixed mixnet node count or ask Python to randomise the count within the selected minimum and maximum.
 - The number of senders and receivers represents the number of separate `Person` instances Python creates.
@@ -454,7 +454,7 @@ Create typed request/response schemas. Validate:
 
 - Sender count: 1–10.
 - Receiver count: 1–10.
-- Mixnet node count: initial supported range 10–20.
+- Mixnet node count: supported range 6–20, default 6.
 - Exchange count: integer from 1 to 10.
 - Receiver polling enabled: boolean, with optional per-receiver overrides.
 - Network-path transit delay and jitter values: non-negative and within configured safety limits.
@@ -1391,7 +1391,7 @@ Use D3 forces as constrained layout assistance, not as an unconstrained force-di
 - route forward edges from the upper-left across the upper lane;
 - allow responsive horizontal scrolling or zoom before collapsing stage order.
 
-Tune and test collision strength, link distance, charge strength, alpha decay and column gap against the expected 10–20 mix-node range. The result should have clear edges, even whitespace, readable labels and minimal crossings, informed by the diagram reference without copying it.
+Tune and test collision strength, link distance, charge strength, alpha decay and column gap against the expected 6–20 mix-node range. The result should have clear edges, even whitespace, readable labels and minimal crossings, informed by the diagram reference without copying it.
 
 ## 8.4 Edge visual treatment
 
@@ -1592,7 +1592,7 @@ Use a typed configuration model. Suggested shape:
   "network": {
     "mixnet": {
       "algorithm": "loopix-usenix-2017",
-      "min_nodes": 10,
+      "min_nodes": 6,
       "max_nodes": 20,
       "randomize_count": true,
       "layer_count": 3,
@@ -1919,7 +1919,7 @@ Test at minimum:
 - Create simulation sends the expected configuration.
 - Staged generated messages render and edits are accepted before run.
 - Topology renders only from backend data.
-- Stage columns remain ordered and node cards do not overlap at 10 and 20 mix nodes.
+- Stage columns remain ordered and node cards do not overlap at 6 and 20 mix nodes.
 - Reply routes reuse the same node cards and render in the lower lane from right to left.
 - Path transit markers remain between endpoints until completion events.
 - Selecting a node opens the correct inspector.
@@ -2157,7 +2157,7 @@ Within every phase, treat each checklist item as a testable increment: write or 
 - [ ] Highlight selected peers and links.
 - [ ] Apply incremental topology updates.
 - [ ] Render participant portraits and selectable message logs.
-- [ ] Test layout legibility and responsiveness with 10 and 20 mix nodes.
+- [ ] Test layout legibility and responsiveness with 6 and 20 mix nodes.
 
 **Exit criteria:** the user can inspect the generated network, each node's protocol state and the exact algorithm profile and parameters in use.
 
@@ -2262,7 +2262,7 @@ The first complete implementation is done when:
 - [ ] SvelteKit starts independently with `npm run dev`.
 - [ ] The frontend accepts the backend port/endpoint and connects successfully.
 - [ ] The user can configure 1–10 senders and 1–10 receivers.
-- [ ] The user can configure 10–20 mixnet nodes.
+- [ ] The user can configure 6–20 mixnet nodes.
 - [ ] Sender, receiver and mixnet-node counts appear together in the network setup panel.
 - [ ] The user can configure conversation pairing and 1–10 message exchanges.
 - [ ] Python creates all people and network objects.
@@ -2278,7 +2278,7 @@ The first complete implementation is done when:
 - [ ] The UI displays actual message routes, failures and retries.
 - [ ] The UI uses ordered stage columns, an upper forward lane and lower reply lane without duplicated reply nodes.
 - [ ] Messages remain visibly in transit between nodes for the Python-owned path delay.
-- [ ] D3 collision and stage forces produce readable layouts for 10 and 20 mix nodes.
+- [ ] D3 collision and stage forces produce readable layouts for 6 and 20 mix nodes.
 - [ ] The UI can inspect every node's protocol state and displays the exact algorithm name, reference, profile and parameters.
 - [ ] Bob polls for messages through his own client and selected channel.
 - [ ] The user can enable or disable receiver polling during a run.

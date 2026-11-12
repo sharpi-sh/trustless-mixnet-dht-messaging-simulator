@@ -15,8 +15,8 @@ export type NumericField = [
 export const networkFields: NumericField[] = [
   ['sender_count', 'Senders', 1, 10],
   ['receiver_count', 'Receivers', 1, 10],
-  ['min_nodes', 'Minimum mix nodes', 10, 20],
-  ['max_nodes', 'Maximum mix nodes', 10, 20],
+  ['min_nodes', 'Minimum mix nodes', 6, 20],
+  ['max_nodes', 'Maximum mix nodes', 6, 20],
   ['exchanges', 'Exchanges per conversation', 1, 10],
   ['pair_count', 'Random pair count', 1, 100],
   ['step_delay_ms', 'Playback delay (ms)', 0, 2000],

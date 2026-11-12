@@ -8,6 +8,8 @@ from app.config import Config
     "changes",
     [
         {"sender_count": 11},
+        {"min_nodes": 5},
+        {"max_nodes": 5},
         {"participant_channels": {"sender-2": "direct"}},
         {"participant_channels": {"receiver-1": "vpn"}},
         {"sender_channel": "socks"},
