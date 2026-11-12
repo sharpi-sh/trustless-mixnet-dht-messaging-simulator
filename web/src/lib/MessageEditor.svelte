@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import type { Message } from './types';
 
   let {
@@ -17,7 +18,7 @@
   let saving = $state(false);
   let error = $state('');
   let groups = $derived.by(() => {
-    const grouped = new Map<string, Message[]>();
+    const grouped = new SvelteMap<string, Message[]>();
     for (const message of messages) {
       const key = `${message.sender_id} · ${message.conversation_id}`;
       const entries = grouped.get(key) ?? [];
@@ -40,6 +41,10 @@
     Object.values(changes).every((text) => text.trim().length > 0),
   );
   $effect(() => {
+    for (const message of messages) {
+      if (edits[message.id] !== undefined && edits[message.id] === message.text)
+        delete edits[message.id];
+    }
     onDirty(dirty);
   });
   onDestroy(() => {

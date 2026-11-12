@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { LabClient } from '#lib/api';
-  import Configuration from '#lib/Configuration.svelte';
-  import MessageEditor from '#lib/MessageEditor.svelte';
-  import type { Config, CommandType } from '#lib/types';
+  import { LabClient } from '../lib/api';
+  import Configuration from '../lib/Configuration.svelte';
+  import MessageEditor from '../lib/MessageEditor.svelte';
+  import type { Config, CommandType } from '../lib/types';
   import './lab.css';
 
   const client = new LabClient();
   const store = client.store;
   let endpoint = $state('');
+  let mounted = $state(false);
   let tested = $state('');
   let view = $state<'connection' | 'configuration' | 'laboratory'>(
     'connection',
@@ -22,6 +23,7 @@
 
   onMount(() => {
     endpoint = localStorage.getItem('lab-endpoint') ?? '';
+    mounted = true;
     return () => client.disconnect();
   });
   $effect(() => {
@@ -147,6 +149,7 @@
         <p>Enter the port or local URL printed by the Python process.</p>
         <label for="endpoint">Backend endpoint</label>
         <input
+          disabled={!mounted}
           id="endpoint"
           type="text"
           bind:value={endpoint}

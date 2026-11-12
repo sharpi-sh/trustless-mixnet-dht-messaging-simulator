@@ -3,40 +3,50 @@ import {
   conversationCount,
   prepareConfig,
   configurationError,
-  networkFields,
-  storageFields,
-  pollingFields,
-  loopixFields,
-  transportFields,
-  outageFields,
 } from './configuration';
 import type { Config } from './types';
 
 function valid(): Config {
-  // Run each numeric validator against its official lower or first positive bound.
-  const settings = Object.fromEntries(
-    [
-      ...networkFields,
-      ...storageFields,
-      ...pollingFields,
-      ...loopixFields,
-      ...transportFields,
-      ...outageFields,
-    ].map(([key, , minimum, , rule]) => [
-      key,
-      rule === 'positive' ? 0.1 : minimum,
-    ]),
-  );
   return {
-    ...settings,
-    pairing_strategy: 'all_to_one',
+    sender_count: 1,
+    receiver_count: 1,
+    min_nodes: 10,
+    max_nodes: 10,
     randomise_count: false,
+    pairing_strategy: 'all_to_one',
+    pair_count: 1,
+    exchanges: 1,
     random_seed: null,
-    pattern: 'always_online',
-    polling_overrides: {},
     polling_enabled: true,
+    polling_overrides: {},
+    polling_interval_ms: 100,
+    poll_batch: 1,
+    base_transit_delay_ms: 1,
+    jitter_min_ms: 0,
+    jitter_max_ms: 1,
+    mu_per_second: 0.1,
+    payload_rate_per_minute: 1,
+    client_loop_rate_per_minute: 1,
+    drop_cover_rate_per_minute: 1,
+    mix_loop_rate_per_minute: 1,
+    dht_nodes: 2,
+    storage_nodes: 1,
+    replicas: 1,
+    chunk_bytes: 32,
+    pattern: 'always_online',
+    failure_probability: 0,
+    min_outage_ms: 0,
+    max_outage_ms: 1,
+    min_online_ms: 1,
+    initial_offline_probability: 0,
+    always_offline_probability: 0,
+    always_online_probability: 0,
     scheduled_outages: [],
-  } as Config;
+    operator_count: 1,
+    max_retries: 0,
+    ack_timeout_ms: 1,
+    step_delay_ms: 1,
+  };
 }
 
 test('pairing choices count exchanges in both directions', () => {
