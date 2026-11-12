@@ -3,7 +3,7 @@
 from typing import Any
 
 from .config import Config
-from .engine import Engine
+from .engine import Engine, Transit
 from .packet_runtime import PacketRuntime
 from .profiles import profiles
 from .steps import Action
@@ -34,7 +34,15 @@ class NetworkSimulation(Engine):
             "storage": "replicated-storage",
         }[node.kind]
         detail = node.model_dump()
-        state: dict[str, Any] = {}
+        # Inbound queues hold locally buffered traffic. Bytes still on a link
+        # appear separately in active_paths. Outbound work includes queued sends.
+        state: dict[str, Any] = {
+            "inbound_queue": 0,
+            "outbound_queue": sum(
+                isinstance(step.action, Transit) and step.action.source == uid
+                for _, _, step in self.queue
+            ),
+        }
         if isinstance(node, MixNode):
             peers = []
             for adj in node.adjacent_peers.values():
@@ -47,7 +55,18 @@ class NetworkSimulation(Engine):
                         "path_id": self.topology.path_id(uid, peer.id),
                     }
                 )
-            state.update(adjacent_peers=peers, delayed_packets=node.delayed_packets)
+            state.update(
+                adjacent_peers=peers,
+                delayed_packets=node.delayed_packets,
+                inbound_queue=len(node.delayed_packets),
+            )
+        if node.kind == "provider":
+            state["queued_cells"] = sum(
+                len(self.inboxes[person.id].messages)
+                for person in self.clients.people.values()
+                if self.topology.mixnet.providers[int(person.role == "receiver")] == uid
+            )
+            state["inbound_queue"] = state["queued_cells"]
         if node.kind in {"provider", "mix"}:
             state.update(
                 replay_tags=self.packets.traffic.sphinx.replay_count(uid),
@@ -62,6 +81,7 @@ class NetworkSimulation(Engine):
             state.update(owner=tor.owner_id, entries=tor.entry_count, exits=tor.exit_count)
         elif node.kind == "person":
             state.update(self.clients.people[uid].device())
+            state["outbound_queue"] += len(self.packets.outbox[uid])
         return {
             "node": detail,
             "profile": next(p.model_dump() for p in self.registry if p.id == profile),

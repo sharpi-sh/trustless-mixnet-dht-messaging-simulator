@@ -59,33 +59,39 @@ sequenceDiagram
     L1->>L2: Process layer and apply mix delay
     L2->>L3: Process layer and apply mix delay
     L3->>EP: Deliver opaque packet
-    EP->>D: Publish opaque encrypted manifest
-    D->>V: Place encrypted fragments
+    EP->>D: Pass opaque ciphertext to application gateway
+    D->>V: Place encrypted fragments and receive receipts
+    D->>D: Publish encrypted manifest under a lookup handle
+    D-->>EP: Queue lookup handle at recipient provider
 
     B->>BT: Poll for messages
-    BT->>D: Resolve opaque mailbox record
-    D->>V: Locate encrypted fragments
+    BT->>EP: Pull a fixed-size padded response
+    BT->>D: Resolve opaque handle and return manifest to Bob
+    BT->>V: Fetch replicas listed in the decrypted manifest
     V-->>BT: Return encrypted fragments
     BT-->>B: Reconstruct and decrypt
     Note over B: Alice's unverified reply key becomes visible after decryption
 
     B->>BT: Encrypt reply to Alice's reply key
     BT->>EP: Provider acts as reply ingress
-    EP->>L3: New independent source route
-    L3->>L2: Process reply packet
-    L2->>L1: Process reply packet
-    L1->>IP: Provider acts as reply egress
-    IP->>D: Publish reply manifest
-    D->>V: Place encrypted reply fragments
+    EP->>L1: New independent source route
+    L1->>L2: Process reply packet
+    L2->>L3: Process reply packet
+    L3->>IP: Provider acts as reply egress
+    IP->>D: Pass opaque reply to application gateway
+    D->>V: Place encrypted reply fragments and receive receipts
+    D->>D: Publish encrypted reply manifest
+    D-->>IP: Queue handle at Alice's provider
 
     A->>AT: Poll for replies
-    AT->>D: Resolve Alice's opaque mailbox
-    D->>V: Locate reply fragments
+    AT->>IP: Pull a fixed-size padded response
+    AT->>D: Resolve handle and return manifest to Alice
+    AT->>V: Fetch replicas listed in the decrypted manifest
     V-->>AT: Return encrypted reply fragments
     AT-->>A: Reconstruct and decrypt reply
 ```
 
-Every arrow represents a Python-owned `NetworkPath` with its own logical transit delay. Loopix mixing delay occurs inside each mix layer and playback delay only controls presentation speed.
+Transfers between network nodes traverse a Python-owned `NetworkPath` with its own logical transit delay. Device cryptography and local storage operations run on their owning nodes. Loopix mixing delay occurs inside each mix layer and playback delay only controls presentation speed.
 
 ## Code components
 
@@ -121,8 +127,6 @@ python -m pip install -e "./python[dev]"
 cd web
 npm ci
 ```
-
-
 
 ## Running the simulator
 

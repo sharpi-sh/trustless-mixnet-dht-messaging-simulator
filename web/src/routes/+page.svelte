@@ -4,6 +4,7 @@
   import Configuration from '../lib/Configuration.svelte';
   import MessageEditor from '../lib/MessageEditor.svelte';
   import type { Config, CommandType } from '../lib/types';
+  import Workspace from '../lib/Workspace.svelte';
   import './lab.css';
 
   const client = new LabClient();
@@ -301,6 +302,9 @@ npm run dev</code
         >
         <span>Planned messages <b>{lab.messages.length}</b></span>
       </div>
+      {#key lab.simulation_id + ':' + lab.epoch}
+        <Workspace {lab} {client} events={$store.events} {connected} />
+      {/key}
       {#if lab.status === 'ready'}
         {#key lab.simulation_id + ':' + lab.epoch}
           <MessageEditor
@@ -312,7 +316,6 @@ npm run dev</code
           />
         {/key}
       {/if}
-      <div class="workspace-slot"></div>
       <p class="command-feedback" aria-live="polite">
         {pending ? 'Applying command…' : $store.feedback}
       </p>
