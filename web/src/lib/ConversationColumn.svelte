@@ -1,7 +1,12 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
-  import { chatRows, logicalStamp, verifiedSigner } from './conversation';
+  import {
+    chatRows,
+    lastActivity,
+    logicalStamp,
+    verifiedSigner,
+  } from './conversation';
   import SignatureReceipt from './SignatureReceipt.svelte';
   import { messageColour } from './graph-layout';
   import type { Device, Message } from './types';
@@ -10,17 +15,25 @@
     role,
     devices,
     messages,
-  }: { role: Device['role']; devices: Device[]; messages: Message[] } =
-    $props();
+    selectedId,
+    address,
+  }: {
+    role: Device['role'];
+    devices: Device[];
+    messages: Message[];
+    selectedId?: string;
+    address?: string;
+  } = $props();
   const title = $derived(
     role === 'sender' ? 'Sender conversations' : 'Recipient conversations',
   );
-  let selected = $state(''),
-    thread = $state('');
+  let thread = $state('');
   let entries = $state<HTMLElement>(),
     following = true;
   const choices = $derived(devices.filter((d) => d.role === role));
-  const person = $derived(choices.find((d) => d.id === selected) ?? choices[0]);
+  const person = $derived(
+    choices.find((d) => d.id === selectedId) ?? choices[0],
+  );
   const names = $derived(new Map(devices.map((d) => [d.id, d.label])));
   const conversations = $derived.by(() => {
     const peers = new SvelteMap<string, string>();
@@ -36,11 +49,7 @@
       (r) => !thread || r.conversation_id === thread,
     ),
   );
-  function switchDevice(id: string) {
-    selected = id;
-    thread = '';
-    following = true;
-  }
+  const times = $derived(lastActivity(person?.logs ?? []));
   $effect(() => {
     const list = entries,
       count = rows.length,
@@ -63,16 +72,20 @@
 <aside class="chat" aria-label={title}>
   <header>
     <h3>{title}</h3>
-    {#if choices.length > 1}
-      <select
-        aria-label={role === 'sender' ? 'Sender device' : 'Recipient device'}
-        value={person?.id}
-        onchange={(e) => switchDevice(e.currentTarget.value)}
-      >
-        {#each choices as d (d.id)}<option value={d.id}>{d.label}</option
-          >{/each}
-      </select>
-    {:else if person}<strong>{person.label}</strong>{/if}
+    {#if person}
+      <strong data-chat-owner={person.id}>{person.label}</strong>
+      {#if address}<small data-device-ip={address}>{address}</small>{/if}
+      <dl class="activity">
+        <dt>Last sent</dt>
+        <dd data-last-sent={times.sent ?? ''}>
+          {times.sent === null ? '—' : logicalStamp(times.sent)}
+        </dd>
+        <dt>Last received</dt>
+        <dd data-last-received={times.received ?? ''}>
+          {times.received === null ? '—' : logicalStamp(times.received)}
+        </dd>
+      </dl>
+    {/if}
     {#if conversations.size > 1}
       <select
         class="thread"
@@ -177,6 +190,18 @@
       sans-serif;
     color: var(--muted);
     letter-spacing: 0;
+  }
+  .activity {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 6px;
+    margin: 2px 0;
+    font: 10px/1.4 var(--mono, monospace);
+    color: #506556;
+  }
+  .activity dd {
+    margin: 0;
+    text-align: right;
   }
   .messages {
     padding: 12px 9px;

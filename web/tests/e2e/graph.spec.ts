@@ -7,7 +7,7 @@ import type { LabNode } from '../../src/lib/types';
 async function assertGeometry(nodes: Locator, topology: LabNode[]) {
   const cards = await nodes.evaluateAll((groups) =>
     groups.map((group) => {
-      const rect = group.querySelector('rect[data-card]');
+      const rect = group.querySelector('[data-card]');
       if (!rect)
         throw new Error(
           'Missing card for ' + group.getAttribute('data-node-id'),
@@ -65,7 +65,7 @@ async function assertFit(viewport: Locator) {
   const bounds = await viewport.evaluate((container) => {
     const viewportBox = container.getBoundingClientRect();
     const cards = Array.from(
-      container.querySelectorAll('rect[data-card]'),
+      container.querySelectorAll('[data-card]'),
       (card) => card.getBoundingClientRect(),
     );
     const sample = container.querySelector<SVGRectElement>('rect[data-card]')!;
@@ -122,6 +122,66 @@ for (const count of [10, 20]) {
       const nodes = graph.locator('[data-node-id]');
       await expect(nodes).toHaveCount(topology.length);
       await assertGeometry(nodes, topology);
+      const bands = graph.locator('.band');
+      await expect(bands).toHaveCount(
+        new Set(
+          topology.filter((n) => n.kind !== 'person').map((n) => n.stage_index),
+        ).size,
+      );
+      await expect(graph.locator('.band.person')).toHaveCount(0);
+      const mixId = topology.find((n) => n.kind === 'mix')!.id;
+      const mixCard = await graph
+        .locator('[data-node-id="' + mixId + '"] [data-card]')
+        .boundingBox();
+      const mixBand = await graph
+        .locator('.band.mix rect')
+        .first()
+        .boundingBox();
+      expect(mixCard!.width).toBeLessThan(mixBand!.width / 2);
+
+      const avatars = [];
+      for (const device of snapshot.devices) {
+        const avatar = graph.locator('[data-node-id="' + device.id + '"]');
+        const photo = avatar.locator('image');
+        await expect(photo).toBeVisible();
+        const href = await photo.getAttribute('href');
+        expect(href).toBeTruthy();
+        const loaded = await photo.evaluate(async (_, src) => {
+          const image = new Image();
+          image.src = src!;
+          await image.decode();
+          return (
+            image.naturalWidth > 0 &&
+            new URL(image.src).origin === location.origin
+          );
+        }, href);
+        expect(loaded).toBe(true);
+        const circle = await avatar.locator('circle[data-card]').boundingBox();
+        expect(circle).not.toBeNull();
+        expect(circle!.width).toBeCloseTo(circle!.height, 1);
+        if (device.role === 'sender') avatars.push(circle!);
+        const channelPath = snapshot.topology.paths.find(
+          (p) =>
+            [p.source_id, p.target_id].includes(device.id) &&
+            [p.source_id, p.target_id].includes(device.channel_id!),
+        )!;
+        await expect(
+          graph
+            .locator('[data-path-id="' + channelPath.id + '"] path.stroke')
+            .first(),
+        ).toBeAttached();
+      }
+      avatars.sort((a, b) => a.y - b.y);
+      for (const [i, avatar] of avatars.entries()) {
+        expect(avatar.x + avatar.width / 2).toBeCloseTo(
+          avatars[0].x + avatars[0].width / 2,
+          1,
+        );
+        if (i)
+          expect(
+            avatar.y - avatars[i - 1].y - avatars[i - 1].height,
+          ).toBeGreaterThan(2);
+      }
       const sender = page.getByRole('complementary', {
         name: 'Sender conversations',
         exact: true,

@@ -390,7 +390,7 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 - Default messages and replies are deterministic random strings of 3–10 words selected from the first few sentences of Lorem ipsum, using the simulation RNG.
 - One exchange contains one sender message and one recipient reply; the configured range is 1–10 exchanges.
 - A run uses the final staged text returned to Python, not stale browser-only state.
-- Every participant device card contains a chronological conversation log.
+- Each participant portrait opens its chronological conversation log in the adjacent pane.
 - A log row shows direction, simulation timestamp and plaintext available to that device, for example `SEND 11:23 pm  Hi Bob, how are you?` or `REPLY 11:40 pm  Lorem ipsum dolor`.
 - Logs distinguish staged, sent, delivered, received and replied states without exposing plaintext in network-node inspectors or general telemetry.
 
@@ -659,7 +659,7 @@ Both private keys must remain on the simulated device. Do not include private ke
 
 The frontend may display a key fingerprint and public key, but not private key material.
 
-`staged_message_plan` is editable only before a run starts or after reset. `device_message_log` is Python-owned chronological state containing direction, message ID, conversation ID, logical timestamp, delivery state and plaintext visible to that participant. The frontend renders this state inside the participant's device card.
+`staged_message_plan` is editable only before a run starts or after reset. `device_message_log` is Python-owned chronological state containing direction, message ID, conversation ID, logical timestamp, delivery state and plaintext visible to that participant. The frontend renders this state in the selected participant’s conversation pane.
 
 ## 4.3 Alice and Bob behaviour
 
@@ -700,7 +700,7 @@ Each participant owns a connection channel. Sender and recipient roles can indep
 - Outline Shadowsocks models a proxy with a client-facing address and a server egress address. The proxy sees the device's IP on entry. The next service sees the proxy's IP. The simulation represents address visibility without implementing the Shadowsocks wire protocol.
 - Direct requests use the device's own network-facing IP. The diagram can represent its local interface. The first remote service observes the device IP.
 
-Label both channel columns by role and show each device's simulated IP address on its card. Each recorded journey segment must expose the source and destination IPs for that direction, identify the observer and preserve the cargo inspection. Transport addresses are independent of signed application identity. A channel choice changes device access to the network. Loopix routes for message deposit and the existing retrieval policy still apply.
+Label both channel columns by role and show each device's simulated IP address in its selected conversation header. Each recorded journey segment must expose the source and destination IPs for that direction, identify the observer and preserve the cargo inspection. Transport addresses are independent of signed application identity. A channel choice changes device access to the network. Loopix routes for message deposit and the existing retrieval policy still apply.
 
 ## 4.5 Mixnet manager
 
@@ -1218,7 +1218,7 @@ After **Create simulation** and after **Reset**, replace the setup form's messag
 ### C. Network topology
 
 Main visual area showing:
-- participant device cards with compact message logs;
+- participant portrait endpoints beside selectable conversation panes;
 - each person's selected connection channel;
 - mixnet manager/network boundary if useful;
 - Loopix ingress and egress providers;
@@ -1328,9 +1328,9 @@ Filters:
 
 The delay slider should remain available during execution.
 
-### H. Participant device cards and logs
+### H. Participant portraits and conversation logs
 
-Each person is rendered as a device-style card at the relevant outer edge of the diagram. The card shows display name, role, key fingerprint, polling state and a compact scrollable conversation log.
+Render participants as circular photo endpoints at the edges of their conversation panes. Centre each vertical stack and connect each portrait to its own channel. A green ring identifies the participant selected on each side. Selecting a portrait opens its chat, IP address and latest send and receive times. Keep the device details available in the node inspector.
 
 Log rows use the participant's perspective:
 
@@ -1968,7 +1968,7 @@ Expected result:
 16. Path markers visibly remain in transit for their path delay, independently of mix and playback delays.
 17. The blocked path is visibly unavailable, affects delivery, and becomes eligible after restoration.
 18. Bob retrieves nothing while polling is disabled and resumes retrieval after it is enabled.
-19. Device cards show timestamped send/reply logs, including the edited message.
+19. Selected conversation panes show timestamped send/reply logs, including the edited message.
 20. The lineage view shows the encrypted reply-key relationship without exposing it in DHT/storage plaintext.
 
 ---
@@ -2156,7 +2156,7 @@ Within every phase, treat each checklist item as a testable increment: write or 
 - [ ] Build protocol-state and algorithm inspector.
 - [ ] Highlight selected peers and links.
 - [ ] Apply incremental topology updates.
-- [ ] Render participant device cards and message logs.
+- [ ] Render participant portraits and selectable message logs.
 - [ ] Test layout legibility and responsiveness with 10 and 20 mix nodes.
 
 **Exit criteria:** the user can inspect the generated network, each node's protocol state and the exact algorithm profile and parameters in use.
@@ -2285,7 +2285,7 @@ The first complete implementation is done when:
 - [ ] The user can block and restore paths or stage boundaries during a run.
 - [ ] Generated and edited staged messages work after create/reset and before run.
 - [ ] Default messages and replies contain deterministic 3–10-word Lorem ipsum text.
-- [ ] Participant device cards show timestamped send/reply logs.
+- [ ] Participant conversation panes show timestamped send/reply logs.
 - [ ] Alice can encrypt a message for Bob and Bob can decrypt it.
 - [ ] Bob can address a signed reply using the X25519 reply key from the successfully verified forward message.
 - [ ] The UI shows safe key/manifest/fragment lineage and never exposes the reply key as plaintext DHT/storage metadata.

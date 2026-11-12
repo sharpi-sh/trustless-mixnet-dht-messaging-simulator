@@ -18,7 +18,7 @@
   import PathAddresses from './PathAddresses.svelte';
   import GraphGlyph from './GraphGlyph.svelte';
   import ConversationColumn from './ConversationColumn.svelte';
-  import { lastActivity, logicalStamp } from './conversation';
+  import { avatarUrl } from './avatars';
   let {
     lab,
     events,
@@ -99,6 +99,20 @@
   });
   let devices = $derived(new Map(lab.devices.map((d) => [d.id, d])));
   let liveNodes = $derived(new Map(lab.topology.nodes.map((n) => [n.id, n])));
+  let chatChoice = $state({ sender: '', receiver: '' });
+  function chatOwner(role: 'sender' | 'receiver') {
+    const selected = devices.get(chatChoice[role]);
+    return selected?.role === role
+      ? selected
+      : lab.devices.find((d) => d.role === role);
+  }
+  const sender = $derived(chatOwner('sender'));
+  const receiver = $derived(chatOwner('receiver'));
+  function selectNode(id: string) {
+    const participant = devices.get(id);
+    if (participant) chatChoice[participant.role] = id;
+    onNode(id);
+  }
   let contacts = $derived(contactIds(details, selectedNode));
   let activeCount = $derived(
     lab.topology.paths.reduce(
@@ -455,11 +469,15 @@
     </div>
   </div>
   <div class="diagram-layout">
-    <ConversationColumn
-      role="sender"
-      devices={lab.devices}
-      messages={lab.messages}
-    />
+    {#key lab.simulation_id + '/' + lab.epoch + '/' + sender?.id}
+      <ConversationColumn
+        role="sender"
+        devices={lab.devices}
+        messages={lab.messages}
+        selectedId={sender?.id}
+        address={liveNodes.get(sender?.id ?? '')?.simulated_address}
+      />
+    {/key}
     <div
       class="graph-viewport"
       bind:this={viewport}
@@ -615,7 +633,9 @@
             transform={'translate(' + g.x + ' ' + g.y + ')'}
             role="button"
             tabindex="0"
-            aria-pressed={selectedNode === n.id}
+            aria-pressed={device
+              ? (device.role === 'sender' ? sender : receiver)?.id === n.id
+              : selectedNode === n.id}
             aria-label={n.label +
               ', ' +
               n.kind +
@@ -631,15 +651,15 @@
             class:peer={contacts.has(n.id)}
             class:down={!n.online}
             class:busy
-            onclick={() => onNode(n.id)}
-            onkeydown={(ev) => handleKey(ev, () => onNode(n.id))}
+            onclick={() => selectNode(n.id)}
+            onkeydown={(ev) => handleKey(ev, () => selectNode(n.id))}
           >
             <title
               >{n.label} · {n.id} · {n.simulated_address} · {n.online
                 ? 'online'
                 : 'offline'}</title
             >
-            {#if pinnedNodes.has(n.id)}
+            {#if !device && pinnedNodes.has(n.id)}
               <rect
                 class="route-node"
                 class:retry={pinned?.retry}
@@ -651,62 +671,39 @@
                 pointer-events="none"
               />
             {/if}
-            <rect
-              data-card=""
-              class="card"
-              x={-g.w / 2}
-              y={-g.h / 2}
-              width={g.w}
-              height={g.h}
-              rx={device ? 8 : 7}
-            />
             {#if device}
-              <g
-                transform={'translate(' +
-                  (-g.w / 2 + 9) +
-                  ' ' +
-                  (-g.h / 2 + 10) +
-                  ') scale(.72)'}><GraphGlyph kind={n.kind} /></g
+              <defs
+                ><clipPath id={'portrait-' + device.id}
+                  ><circle r={g.w / 2 - 2} /></clipPath
+                ></defs
               >
-              <text class="device-title" x={-g.w / 2 + 32} y={-g.h / 2 + 22}
+              <circle class="avatar-ring" data-card="" r={g.w / 2} />
+              <image
+                href={avatarUrl(device.id)}
+                x={-g.w / 2}
+                y={-g.h / 2}
+                width={g.w}
+                height={g.h}
+                clip-path={'url(#portrait-' + device.id + ')'}
+                preserveAspectRatio="xMidYMid slice"
+              />
+              <text class="avatar-name" text-anchor="middle" y={g.h / 2 + 13}
                 >{device.label}</text
               >
-              <text
-                class="device-ip"
-                data-device-ip={n.simulated_address}
-                x={-g.w / 2 + 9}
-                y={-g.h / 2 + 39}>{n.simulated_address}</text
-              >
-              {@const activityTimes = lastActivity(device.logs)}
-              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 57}
-                >Last sent</text
-              >
-              <text
-                class="device-time"
-                x={g.w / 2 - 9}
-                y={-g.h / 2 + 57}
-                data-last-sent={activityTimes.sent ?? ''}
-                >{activityTimes.sent === null
-                  ? '—'
-                  : logicalStamp(activityTimes.sent)}</text
-              >
-              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 74}
-                >Last received</text
-              >
-              <text
-                class="device-time"
-                x={g.w / 2 - 9}
-                y={-g.h / 2 + 74}
-                data-last-received={activityTimes.received ?? ''}
-                >{activityTimes.received === null
-                  ? '—'
-                  : logicalStamp(activityTimes.received)}</text
-              >
             {:else}
-              <g transform="translate(-9,-17) scale(.76)"
+              <rect
+                data-card=""
+                class="card"
+                x={-g.w / 2}
+                y={-g.h / 2}
+                width={g.w}
+                height={g.h}
+                rx="5"
+              />
+              <g transform="translate(-8,-8) scale(.67)"
                 ><GraphGlyph kind={n.kind} /></g
               >
-              <text class="node-label" text-anchor="middle" y="14"
+              <text class="node-label" text-anchor="middle" y={g.h / 2 + 13}
                 >{isChannel(n.kind)
                   ? n.kind === 'direct'
                     ? 'Direct'
@@ -719,7 +716,7 @@
             {#if activity}
               <g
                 class="endpoints"
-                transform={'translate(0 ' + (g.h / 2 + 1) + ')'}
+                transform={'translate(0 ' + (-g.h / 2 - 14) + ')'}
                 pointer-events="none"
               >
                 <title
@@ -811,11 +808,15 @@
         {/each}
       </svg>
     </div>
-    <ConversationColumn
-      role="receiver"
-      devices={lab.devices}
-      messages={lab.messages}
-    />
+    {#key lab.simulation_id + '/' + lab.epoch + '/' + receiver?.id}
+      <ConversationColumn
+        role="receiver"
+        devices={lab.devices}
+        messages={lab.messages}
+        selectedId={receiver?.id}
+        address={liveNodes.get(receiver?.id ?? '')?.simulated_address}
+      />
+    {/key}
   </div>
   <div class="legend">
     <span><i class="legend-line"></i>Configured</span><span
@@ -1097,9 +1098,6 @@
     stroke: #dce5df;
     stroke-width: 0.7;
   }
-  .band.person rect {
-    fill: #f1f2ed;
-  }
   .band.tor rect,
   .band.shadowsocks rect,
   .band.direct rect {
@@ -1359,31 +1357,27 @@
   }
   .node-label {
     font:
-      600 12px system-ui,
+      600 10px system-ui,
       sans-serif;
     fill: #33483c;
   }
-  .device-title {
+  .avatar-ring {
+    fill: white;
+    stroke: #a9b6ad;
+    stroke-width: 1.5;
+  }
+  .graph-node[aria-pressed='true'] .avatar-ring {
+    stroke: #208346;
+    stroke-width: 3.5;
+  }
+  .graph-node:focus-visible .avatar-ring {
+    stroke-dasharray: 4 2;
+  }
+  .avatar-name {
+    fill: #2e4437;
     font:
-      650 14px system-ui,
+      650 11px system-ui,
       sans-serif;
-    fill: #283e30;
-  }
-  .device-ip {
-    font: 10px var(--mono, monospace);
-    fill: #344b40;
-  }
-  .device-sub {
-    font:
-      10px system-ui,
-      sans-serif;
-    fill: #56695c;
-  }
-  .device-time {
-    font: 10px var(--mono, monospace);
-    fill: #344b40;
-    text-anchor: end;
-    font-variant-numeric: tabular-nums;
   }
   .legend {
     gap: 15px;
