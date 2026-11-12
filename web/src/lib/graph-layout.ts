@@ -373,6 +373,31 @@ export function extractRoute(event?: LabEvent | null) {
   };
 }
 
+export function packetRetryNotice(events: LabEvent[]): string | null {
+  const event = events.findLast((row) => {
+    const attempt = row.payload.attempt;
+    return (
+      !!row.message_id &&
+      (row.event_type === 'packet_retry_scheduled' ||
+        row.event_type === 'message_forward_failed' ||
+        (row.event_type === 'mixnet_route_constructed' &&
+          typeof attempt === 'number' &&
+          attempt > 1))
+    );
+  });
+  if (!event) return null;
+  const packet = String(event.payload.packet_id ?? 'packet');
+  if (event.event_type === 'packet_retry_scheduled') {
+    const previous = String(
+      event.payload.previous_packet_id ?? 'The failed packet',
+    );
+    return `${previous} stopped at an unavailable node. Fresh end-to-end attempt ${packet} is queued for the sender’s next payload opportunity; a mix cannot reroute a Sphinx packet mid-route.`;
+  }
+  if (event.event_type === 'mixnet_route_constructed')
+    return `Retry ${packet} is now using a newly selected end-to-end route (attempt ${event.payload.attempt}).`;
+  return `${packet} stopped at an unavailable node. The sender will create a fresh end-to-end attempt if its retry budget remains.`;
+}
+
 export function transitEndpoints(
   transits: ActiveTransit[],
   retries: ReadonlySet<string>,

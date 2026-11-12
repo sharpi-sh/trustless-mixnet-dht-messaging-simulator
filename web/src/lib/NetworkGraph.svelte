@@ -11,6 +11,7 @@
     makeTrackRenderer,
     type MessageLeg,
     extractRoute,
+    packetRetryNotice,
     transitEndpoints,
   } from './graph-layout';
   import { channelNames, isChannel } from './channels';
@@ -162,6 +163,7 @@
     }),
   );
   let pinnedNodes = $derived(new Set(pinned?.nodes));
+  let retryNotice = $derived(packetRetryNotice(events));
   let edges = $derived.by(() =>
     lab.topology.paths
       .flatMap((p) => {
@@ -850,6 +852,9 @@
     <span>↑ Outgoing · ↓ Incoming</span>
     <span class="lane">↗ Forward <span>·</span> ↙ Reply</span>
   </div>
+  {#if retryNotice}
+    <p class="retry-notice" role="status">{retryNotice}</p>
+  {/if}
   {#if selectedLeg && selectedLeg.pathId === selectedPath && pickedTrack}
     <section
       class="leg-readout"
@@ -1439,6 +1444,15 @@
     margin-left: auto;
     font: 10px var(--mono, monospace);
     color: #66766c;
+  }
+  .retry-notice {
+    margin: 0;
+    padding: 8px 17px;
+    border-top: 1px solid #ead9c7;
+    background: #fff8ef;
+    color: #68431f;
+    font-size: 11px;
+    line-height: 1.4;
   }
   .lane > span {
     margin: 0 3px;

@@ -5,6 +5,7 @@ import {
   makeTraceHistory,
   makeTrackRenderer,
   messageColour,
+  packetRetryNotice,
   transitEndpoints,
   laneCurve,
   layoutTopology,
@@ -202,6 +203,54 @@ test('extracts the exact reported route with its lane, repeats and retry attempt
   const history = makeTraceHistory();
   expect(history('first', [event]).retries.has('pkt-7')).toBe(true);
   expect(history('reset', []).retries.size).toBe(0);
+});
+
+test('explains that a failed Sphinx route stops before a fresh sender retry', () => {
+  const base: LabEvent = {
+    event_type: 'message_forward_failed',
+    event_id: 'evt-1',
+    sequence: 1,
+    simulation_time_ms: 20,
+    simulation_id: 'lab-1',
+    step_id: 'step-1',
+    source_id: 'mix-1',
+    target_id: 'mix-2',
+    message_id: 'msg-1',
+    conversation_id: 'conversation-1',
+    payload: { packet_id: 'packet-1', attempt: 1 },
+  };
+  expect(packetRetryNotice([base])).toContain(
+    'sender will create a fresh end-to-end attempt',
+  );
+  expect(
+    packetRetryNotice([
+      base,
+      {
+        ...base,
+        sequence: 2,
+        event_type: 'packet_retry_scheduled',
+        payload: {
+          packet_id: 'packet-2',
+          previous_packet_id: 'packet-1',
+          attempt: 2,
+        },
+      },
+    ]),
+  ).toContain('queued for the sender’s next payload opportunity');
+  expect(
+    packetRetryNotice([
+      base,
+      {
+        ...base,
+        sequence: 3,
+        event_type: 'mixnet_route_constructed',
+        payload: { packet_id: 'packet-2', attempt: 2 },
+      },
+    ]),
+  ).toBe(
+    'Retry packet-2 is now using a newly selected end-to-end route (attempt 2).',
+  );
+  expect(packetRetryNotice([{ ...base, message_id: null }])).toBeNull();
 });
 
 test('counts actual sources, destinations and retries independently at shared nodes', () => {
