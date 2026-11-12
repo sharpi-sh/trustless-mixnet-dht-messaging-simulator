@@ -13,6 +13,15 @@ test('keeps runtime controls with the topology and inspection alongside the even
   await expect(
     interventions.getByRole('heading', { name: 'Receiver polling' }),
   ).toBeVisible();
+  const pollStatus = page.locator('[data-poll-owner="receiver-1"]');
+  const allTransports = page.getByLabel('All transports', { exact: true });
+  const [pollBox, runtimeBox, transportsBox] = await Promise.all([
+    pollStatus.boundingBox(),
+    interventions.boundingBox(),
+    allTransports.boundingBox(),
+  ]);
+  expect(pollBox!.x + pollBox!.width).toBeLessThan(runtimeBox!.x);
+  expect(runtimeBox!.x + runtimeBox!.width).toBeLessThan(transportsBox!.x);
   const topology = page.getByRole('group', {
     name: 'Network topology',
     exact: true,
