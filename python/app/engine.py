@@ -1,5 +1,7 @@
 """Discrete-event simulation kernel. Wall-clock pacing belongs to the API runner."""
 import heapq
+from random import Random
+from .availability import Availability, AvailabilityChange, AvailabilityTimer
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -40,6 +42,13 @@ class Engine(Simulation):
         self.applied: dict[str,StepResult] = {}
         self.initialised = False
         self.step_delay_ms = config.step_delay_ms
+        self.availability = Availability(config,self.topology,Random(self.rng.getrandbits(128)))
+        for at,action in self.availability.start():
+            if isinstance(action,AvailabilityChange) and at==0:
+                self.topology.nodes[action.source].online=action.online
+                self.topology.nodes[action.source].history.append((0,action.online))
+            else:
+                self.schedule(action,at)
 
     def make_step(self,action: Action,delay_ms: int) -> SimulationStep:
         if delay_ms < 0:
@@ -202,7 +211,12 @@ class Engine(Simulation):
                         self.arrive(self.in_flight[uid],drop=True)
 
     def perform(self,action: Action) -> StepResult:
-        if isinstance(action,Transit):
+        if isinstance(action,AvailabilityChange):
+            self.change_node(action.source,action.online,action.reason)
+        elif isinstance(action,AvailabilityTimer):
+            for at,change in self.availability.execute(action,self.now):
+                self.schedule(change,at-self.now)
+        elif isinstance(action,Transit):
             self.start_transit(action)
         elif isinstance(action,Arrival):
             self.arrive(action)

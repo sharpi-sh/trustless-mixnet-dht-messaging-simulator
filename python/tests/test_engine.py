@@ -40,3 +40,12 @@ def test_step_pause_reset_and_boundary_scope():
     assert all(p.blocked==(p.boundary==boundary) for p in sim.topology.paths.values())
     sim.lifecycle("reset")
     assert sim.now==0 and sim.status=="ready" and all(not p.blocked for p in sim.topology.paths.values())
+
+
+def test_scheduled_outage_uses_logical_clock():
+    from app.config import Outage
+    sim=Engine(Config(pattern="scheduled",scheduled_outages=[Outage(node_id="mix-1",start_ms=10,duration_ms=500000)]))
+    sim.lifecycle("run")
+    list(sim.drain(12))
+    rows=[(e.simulation_time_ms,e.payload["online"]) for e in sim.events if e.event_type=="node_status_changed"]
+    assert rows==[(10,False),(500010,True)]
