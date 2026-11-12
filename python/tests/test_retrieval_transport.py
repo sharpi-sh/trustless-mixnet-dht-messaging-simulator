@@ -1,15 +1,7 @@
-from dataclasses import dataclass
-
 from app.config import Config
 from app.engine import Intervention
-from app.steps import Action
+from app.retrieval import RetrievalCallback as Callback
 from app.storage_simulation import StorageSimulation
-
-
-@dataclass(kw_only=True)
-class Callback(Action):
-    data: bytes = b""
-    ticket: str = ""
 
 
 class Harness(StorageSimulation):

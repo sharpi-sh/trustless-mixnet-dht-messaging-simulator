@@ -25,6 +25,12 @@ Direction = Literal["request", "response"]
 
 
 @dataclass(kw_only=True)
+class RetrievalCallback(Action):
+    data: bytes = field(default=b"", repr=False)
+    ticket: str = field(default="", repr=False)
+
+
+@dataclass(kw_only=True)
 class RetrievalCell(Action):
     exchange: str
     direction: Direction
@@ -49,7 +55,7 @@ class RetrievalFailure(Action):
 class _Exchange:
     device: str
     service: str
-    arrived: Action
+    arrived: RetrievalCallback
     failed: Action
     tag: bytes = field(repr=False)
     expires: int
@@ -90,7 +96,7 @@ class RetrievalTransport:
         service: str,
         payload: bytes,
         reply_capacity: int,
-        arrived: Action,
+        arrived: RetrievalCallback,
         failed: Action,
     ) -> str:
         if reply_capacity < 0:
@@ -148,7 +154,7 @@ class RetrievalTransport:
         )
         return ticket
 
-    def reply(self, ticket: str, payload: bytes, delivered: Action, failed: Action) -> None:
+    def reply(self, ticket: str, payload: bytes, delivered: RetrievalCallback, failed: Action) -> None:
         ex = self._exchanges.get(ticket)
         if ex is None or ex.state != "service":
             return
