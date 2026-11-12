@@ -48,3 +48,21 @@ def test_missing_all_copies_reports_terminal_failure():
         sim.change_node(uid, False, "test")
     sim.vaults.place(Action(source="dht-1", message_id="msg-1", token="w"), b"opaque")
     assert isinstance(sim.run_until_result(), VaultFailed)
+
+
+def test_corrupt_copies_exhaust_only_the_affected_fragments_budget():
+    sim = VaultExperiment()
+    sim.lifecycle("run")
+    sim.vaults.place(Action(source="dht-1", message_id="msg-1", token="w"), bytes(range(96)))
+    manifest = sim.run_until_result().manifest
+    broken = manifest.fragments[0]
+    for vault in broken.replicas:
+        sim.storage.nodes[vault].fragments[broken.id] = b"tampered"
+    sim.vaults.fetch(Action(source="receiver-1", message_id="msg-1", token="r"), manifest)
+    assert isinstance(sim.run_until_result(), VaultFailed)
+    attempts = [
+        e.payload["fragment_id"] for e in sim.events if e.event_type == "fragment_retrieval_started"
+    ]
+    assert attempts.count(broken.id) == (sim.config.max_retries + 1) * len(broken.replicas)
+    assert all(attempts.count(f.id) == 1 for f in manifest.fragments[1:])
+    assert not sim.vaults.reads and not sim.retrieval._exchanges
