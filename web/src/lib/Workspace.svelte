@@ -4,6 +4,7 @@
   import type { Snapshot, LabEvent, NodeDetails } from './types';
   import NetworkGraph from './NetworkGraph.svelte';
   import Inspector from './Inspector.svelte';
+  import InspectorPicker from './InspectorPicker.svelte';
   import Interventions from './Interventions.svelte';
   import EventTimeline from './EventTimeline.svelte';
   import LineageLedger from './LineageLedger.svelte';
@@ -125,54 +126,46 @@
     {details}
     onNode={chooseNode}
     onPath={choosePath}
-  />
+  >
+    {#snippet runtimeControls()}
+      <Interventions {lab} {selectedNode} {selectedPath} {client} {connected} />
+    {/snippet}
+  </NetworkGraph>
 </div>
-<div class="inspector-tools">
-  <label
-    >Inspect node
-    <select
-      value={selectedNode}
-      onchange={(e) => chooseNode(e.currentTarget.value)}
-      ><option value="">Select a node</option>
-      {#each lab.topology.nodes as n (n.id)}<option value={n.id}
-          >{n.label} · {n.id}</option
-        >{/each}
-    </select>
-  </label>
-  <label
-    >Inspect path
-    <select
-      value={selectedPath}
-      onchange={(e) => choosePath(e.currentTarget.value)}
-      ><option value="">Select a path</option>
-      {#each lab.topology.paths as p (p.id)}<option value={p.id}
-          >{p.source_id} ↔ {p.target_id}</option
-        >{/each}
-    </select>
-  </label>
+<div class="inspection-layout">
+  <div class="inspection-column" bind:this={inspectorAnchor}>
+    <InspectorPicker
+      {lab}
+      {selectedNode}
+      {selectedPath}
+      onNode={chooseNode}
+      onPath={choosePath}
+    />
+    {#if error}<p role="alert" class="error">{error}</p>{/if}
+    <div class="information">
+      <Inspector
+        {lab}
+        {details}
+        {selectedNode}
+        {selectedPath}
+        {events}
+        onPeer={choosePeer}
+        onNode={chooseNode}
+        onPath={choosePath}
+      />
+    </div>
+  </div>
+  <div class="records-column">
+    <EventTimeline
+      {lab}
+      {events}
+      onRoute={inspectRoute}
+      onNode={(id) => inspectFromHistory(id, 'node')}
+      onPath={(id) => inspectFromHistory(id, 'path')}
+    />
+    <LineageLedger {lab} onNode={(id) => inspectFromHistory(id, 'node')} />
+  </div>
 </div>
-{#if error}<p role="alert" class="error">{error}</p>{/if}
-<Interventions {lab} {selectedNode} {selectedPath} {client} {connected} />
-<div bind:this={inspectorAnchor}>
-  <Inspector
-    {lab}
-    {details}
-    {selectedNode}
-    {selectedPath}
-    {events}
-    onPeer={choosePeer}
-    onNode={chooseNode}
-    onPath={choosePath}
-  />
-</div>
-<EventTimeline
-  {lab}
-  {events}
-  onRoute={inspectRoute}
-  onNode={(id) => inspectFromHistory(id, 'node')}
-  onPath={(id) => inspectFromHistory(id, 'path')}
-/>
-<LineageLedger {lab} onNode={(id) => inspectFromHistory(id, 'node')} />
 
 <style>
   .inspector-tools {
@@ -185,18 +178,33 @@
     margin: 14px 0;
     padding: 12px 16px;
   }
-  label {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    color: var(--muted);
-    font-size: 0.79rem;
-    font-weight: 600;
+  .inspection-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+    margin-top: 16px;
   }
-  select {
-    font-family: var(--mono);
-    font-weight: 400;
-    font-size: 0.77rem;
-    max-width: 15rem;
+  .inspection-column,
+  .records-column {
+    min-width: 0;
+    display: grid;
+    gap: 12px;
+  }
+  .records-column :global(.records) {
+    min-width: 0;
+    margin: 0;
+  }
+  .information {
+    min-width: 0;
+    padding: clamp(12px, 1.4vw, 22px);
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+  }
+  @media (max-width: 850px) {
+    .inspection-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>
