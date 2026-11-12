@@ -15,8 +15,10 @@ class Profile(Model):
     boundaries: list[str]
 
 
-def _channel_profiles(c: Config) -> list[Profile]:
-    selected = {c.sender_channel, c.recipient_channel}
+def _channel_profiles(c: Config, all_channels: bool) -> list[Profile]:
+    selected = (
+        {"tor", "shadowsocks", "direct"} if all_channels else {c.sender_channel, c.recipient_channel}
+    )
     channels = []
     if "tor" in selected:
         channels.append(
@@ -35,8 +37,8 @@ def _channel_profiles(c: Config) -> list[Profile]:
         channels.append(
             Profile(
                 id="shadowsocks-abstraction",
-                name="Shadowsocks proxy abstraction",
-                reference="https://shadowsocks.org/doc/what-is-shadowsocks.html",
+                name="Outline Shadowsocks proxy abstraction",
+                reference="https://github.com/OutlineFoundation/tunnel-server",
                 parameters={"ingress": "Proxy server IP", "egress": "Same proxy server IP"},
                 operations=["Device to proxy", "Proxy to destination"],
                 boundaries=[
@@ -59,7 +61,7 @@ def _channel_profiles(c: Config) -> list[Profile]:
     return channels
 
 
-def profiles(c: Config) -> list[Profile]:
+def profiles(c: Config, *, all_channels: bool = False) -> list[Profile]:
     return [
         Profile(
             id="loopix-usenix-2017",
@@ -106,7 +108,7 @@ def profiles(c: Config) -> list[Profile]:
                 "Simulated RPC transport and clock. Mailbox records are an experimental application format."
             ],
         ),
-        *_channel_profiles(c),
+        *_channel_profiles(c, all_channels),
         Profile(
             id="replicated-storage",
             name="Replicated chunk-storage model",

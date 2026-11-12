@@ -12,7 +12,7 @@ from .participants import People
 
 _CHANNEL_LABEL: dict[ChannelKind, str] = {
     "tor": "Tor abstraction",
-    "shadowsocks": "Shadowsocks proxy",
+    "shadowsocks": "Outline Shadowsocks proxy abstraction",
     "direct": "Direct interface",
 }
 _CHANNEL_ENTRY: dict[ChannelKind, str] = {
