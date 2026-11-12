@@ -173,7 +173,10 @@ for (const count of [10, 20]) {
       }
       avatars.sort((a, b) => a.y - b.y);
       for (const [i, avatar] of avatars.entries()) {
-        expect(avatar.x).toBeCloseTo(avatars[0].x, 0);
+        expect(avatar.x + avatar.width / 2).toBeCloseTo(
+          avatars[0].x + avatars[0].width / 2,
+          1,
+        );
         if (i)
           expect(
             avatar.y - avatars[i - 1].y - avatars[i - 1].height,
