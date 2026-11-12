@@ -19,7 +19,7 @@ class Simulation:
         self.rng = Random(self.seed)
         self.clients = People(self.config, self.rng)
         self.topology = Topology(self.config, self.rng, self.clients)
-        self.dht = DHTNetwork(Random(self.rng.getrandbits(160)))
+        self.dht = DHTNetwork(Random(self.rng.getrandbits(160)), timeout_ms=config.rpc_timeout_ms)
         for uid in self.topology.dht_ids:
             self.dht.add_node(uid)
         self.storage = StorageNetwork(self.topology.storage_ids)

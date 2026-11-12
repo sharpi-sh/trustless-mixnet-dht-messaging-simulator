@@ -119,6 +119,12 @@ class DHTRoutingTable:
         bucket.pending = Probe(old, contact, self._serial, now)
         return bucket.pending
 
+    def cancel_probe(self, probe: Probe) -> None:
+        """A local outage cannot establish the reachability of either remote contact."""
+        bucket = self._bucket(probe.old.node_id)
+        if bucket.pending == probe:
+            bucket.pending = None
+
     def resolve(self, probe: Probe, live: bool, now: int) -> Probe | None:
         bucket = self._bucket(probe.old.node_id)
         if bucket.pending != probe:

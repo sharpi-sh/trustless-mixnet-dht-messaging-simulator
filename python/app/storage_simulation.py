@@ -15,5 +15,11 @@ class StorageSimulation(NetworkSimulation):
         super().initialise()
         self.rpc.start()
 
+    def change_node(self, uid: str, online: bool, reason: str) -> None:
+        changed = self.topology.nodes[uid].online != online
+        super().change_node(uid, online, reason)
+        if changed:
+            self.rpc.availability(uid, online)
+
     def handle(self, action: Action) -> bool:
         return self.rpc.handle(action) or self.vaults.handle(action) or super().handle(action)

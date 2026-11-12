@@ -50,7 +50,13 @@ def profiles(c: Config) -> list[Profile]:
             name="DHT — Kademlia (2002)",
             year=2002,
             reference="https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf",
-            parameters={"id_bits": 160, "k": 20, "alpha": 3, "nodes": c.dht_nodes},
+            parameters={
+                "id_bits": 160,
+                "k": 20,
+                "alpha": 3,
+                "nodes": c.dht_nodes,
+                "rpc_timeout_ms": c.rpc_timeout_ms,
+            },
             operations=["XOR lookup", "PING", "STORE", "FIND_NODE", "FIND_VALUE"],
             boundaries=[
                 "Simulated RPC transport and clock. Mailbox records are an experimental application format."
