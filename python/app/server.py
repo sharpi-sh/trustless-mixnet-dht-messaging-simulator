@@ -241,11 +241,13 @@ async def websocket(ws: WebSocket):
     await ws.send_json({"type": "backend_ready", "api_version": "1"})
     sid: str | None = None
     epoch = cursor = 0
+    loop = asyncio.get_running_loop()
+    last_sent = loop.time()
     recv = asyncio.create_task(ws.receive_text())
     change: asyncio.Task | None = None
 
     async def send_snapshot(history_after: int = 0):
-        nonlocal epoch, cursor
+        nonlocal epoch, cursor, last_sent
         assert sid
         lab = service.get(sid)
         epoch = service.epochs[sid]
@@ -260,10 +262,12 @@ async def websocket(ws: WebSocket):
             }
         )
 
+        last_sent = loop.time()
+
     try:
         while True:
             if sid:
-                change = asyncio.create_task(service.wait(sid, epoch, cursor))
+                change = asyncio.create_task(service.wait_stream(sid, epoch, cursor, last_sent))
             pending: set[asyncio.Task[Any]] = {recv}
             if change is not None:
                 pending.add(change)
@@ -312,6 +316,7 @@ async def websocket(ws: WebSocket):
                     update = delta(lab, epoch, cursor)
                     cursor = update.sequence
                     await ws.send_json({"type": "delta", "delta": update.model_dump(mode="json")})
+                    last_sent = loop.time()
     except (WebSocketDisconnect, OSError, asyncio.CancelledError):
         pass
     finally:

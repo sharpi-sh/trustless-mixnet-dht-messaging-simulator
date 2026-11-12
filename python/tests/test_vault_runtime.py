@@ -1,22 +1,25 @@
 from app.config import Config
-from app.engine import Action, Engine
-from app.vault_runtime import Placed, Reconstructed, VaultFailed, VaultRuntime
+from app.steps import Action
+from app.storage_simulation import StorageSimulation
+from app.vault_runtime import Placed, Reconstructed, VaultFailed
 
 
-class VaultExperiment(Engine):
+class VaultExperiment(StorageSimulation):
     def __init__(self):
         super().__init__(Config(random_seed=37, chunk_bytes=32, storage_nodes=3))
-        self.vaults = VaultRuntime(self)
         self.result = None
+
+    def initialise(self):
+        self.initialised = True
 
     def handle(self, action):
         if isinstance(action, (Placed, Reconstructed, VaultFailed)):
             self.result = action
             return True
-        return self.vaults.handle(action)
+        return super().handle(action)
 
     def run_until_result(self):
-        for _ in self.drain(1000):
+        for _ in self.drain(5000):
             if self.result:
                 break
         assert self.result is not None
@@ -32,7 +35,7 @@ def test_replica_failover_on_explicit_paths():
     manifest = sim.run_until_result().manifest
     vault = manifest.fragments[0].replicas[0]
     sim.change_node(vault, False, "test")
-    sim.vaults.fetch(Action(source="tor-receiver-1", message_id="msg-1", token="r"), manifest)
+    sim.vaults.fetch(Action(source="receiver-1", message_id="msg-1", token="r"), manifest)
     assert sim.run_until_result().ciphertext == data
     assert any(e.event_type == "path_transit_failed" for e in sim.events)
     assert all(e.event_type != "simulation_error" for e in sim.events)
@@ -45,3 +48,21 @@ def test_missing_all_copies_reports_terminal_failure():
         sim.change_node(uid, False, "test")
     sim.vaults.place(Action(source="dht-1", message_id="msg-1", token="w"), b"opaque")
     assert isinstance(sim.run_until_result(), VaultFailed)
+
+
+def test_corrupt_copies_exhaust_only_the_affected_fragments_budget():
+    sim = VaultExperiment()
+    sim.lifecycle("run")
+    sim.vaults.place(Action(source="dht-1", message_id="msg-1", token="w"), bytes(range(96)))
+    manifest = sim.run_until_result().manifest
+    broken = manifest.fragments[0]
+    for vault in broken.replicas:
+        sim.storage.nodes[vault].fragments[broken.id] = b"tampered"
+    sim.vaults.fetch(Action(source="receiver-1", message_id="msg-1", token="r"), manifest)
+    assert isinstance(sim.run_until_result(), VaultFailed)
+    attempts = [
+        e.payload["fragment_id"] for e in sim.events if e.event_type == "fragment_retrieval_started"
+    ]
+    assert attempts.count(broken.id) == (sim.config.max_retries + 1) * len(broken.replicas)
+    assert all(attempts.count(f.id) == 1 for f in manifest.fragments[1:])
+    assert not sim.vaults.reads and not sim.retrieval._exchanges

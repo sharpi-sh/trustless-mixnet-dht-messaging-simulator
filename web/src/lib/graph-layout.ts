@@ -463,6 +463,37 @@ interface MessageTrack {
   legs: string[];
 }
 
+// Completed traces keep their geometry while other cells move. A resize creates a
+// new layout, and a changed transit status supplies a new MessageLeg object.
+export function makeTrackRenderer(layout: GraphLayout) {
+  function render(
+    track: MessageTrack,
+    latest: MessageLeg,
+    a: GraphNode,
+    b: GraphNode,
+  ) {
+    const curve = laneCurve(a, b, track.lane, track.offset);
+    return {
+      ...track,
+      latest,
+      curve,
+      dot: onCurve(curve, 0.5),
+      colour: messageColour(track.messageId),
+    };
+  }
+  const cache = new WeakMap<MessageLeg, ReturnType<typeof render>>();
+  return (track: MessageTrack, latest: MessageLeg) => {
+    const cached = cache.get(latest);
+    if (cached) return cached;
+    const a = layout.nodes.get(track.source),
+      b = layout.nodes.get(track.target);
+    if (!a || !b) return;
+    const rendered = render(track, latest, a, b);
+    cache.set(latest, rendered);
+    return rendered;
+  };
+}
+
 function messageTrafficHistory() {
   const legs = new Map<string, MessageLeg>();
   const tracks = new Map<string, MessageTrack>();

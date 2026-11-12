@@ -18,10 +18,11 @@ from .crypto import seal, unseal
 from .dht_runtime import DHTRequest, DHTResult
 from .packet_runtime import PacketDelivered
 from .polling import MailboxItem
+from .retrieval import RetrievalCallback
 from .steps import Action
 from .storage import MessageManifest
 from .traffic import Lane
-from .vault_runtime import BytesReturned, Placed, Reconstructed, VaultFailed, VaultMiss, VaultRead
+from .vault_runtime import Placed, Reconstructed, VaultFailed, VaultRead
 
 if TYPE_CHECKING:
     from .storage_simulation import StorageSimulation
@@ -41,24 +42,26 @@ class _Stage(Enum):
     PLACE = "place ciphertext"
     PUBLISH = "store encrypted manifest"
     DEPOSIT = "queue handle at provider"
-    ENTER = "request mailbox lookup"
+    REQUEST = "request encrypted manifest page"
     LOOKUP = "lookup encrypted manifest"
-    RETURN = "return encrypted manifest"
+    PAGE = "receive encrypted manifest page"
     OPEN = "open manifest on device"
     FETCH = "fetch ciphertext replicas"
-    FINISH = "return ciphertext to device"
 
 
 @dataclass(kw_only=True)
-class MailboxStep(Action):
+class MailboxStep(RetrievalCallback):
     stage: _Stage
-    data: bytes = field(default=b"", repr=False)
     manifest: MessageManifest | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
 class MailboxTimeout(Action):
+    ticket: str = ""
     continuation: MailboxStep = field(repr=False)
+
+
+_PAGE_SIZE = 864
 
 
 class _ManifestContents(Model):
@@ -76,6 +79,8 @@ class _Job:
     token: str
     egress: str = ""
     wrapping_key: bytes = field(default=b"", repr=False)
+    ticket: str = ""
+    pages: bytearray = field(default_factory=bytearray, repr=False)
     retries: int = 0
     pending: MailboxStep | None = field(default=None, repr=False)
 
@@ -130,6 +135,8 @@ class MailboxRuntime:
     def _end(self, job: _Job) -> None:
         self._jobs.pop(job.token, None)
         if not job.egress:
+            self.sim.retrieval.cancel(job.ticket)
+            self.sim.vaults.cancel_read(job.token)
             self._reading.discard((job.recipient, job.handle))
 
     def _fail(self, job: _Job, reason: str) -> None:
@@ -148,6 +155,10 @@ class MailboxRuntime:
         )
 
     def _retry(self, job: _Job, step: MailboxStep, reason: str, *, transit: bool) -> None:
+        if not job.egress and step.stage == _Stage.REQUEST:
+            self.sim.retrieval.cancel(job.ticket)
+            job.ticket = ""
+            job.pending = None
         if job.retries >= self.sim.config.max_retries:
             self._fail(job, reason)
             return
@@ -219,7 +230,7 @@ class MailboxRuntime:
             return
         self._reading.add(identity)
         self._jobs[job.token] = job
-        self._move(job.step(_Stage.ENTER, person.id, person.tor.id))
+        self.sim.schedule(job.step(_Stage.REQUEST, person.id, person.id))
 
     def _step(self, job: _Job, action: MailboxStep) -> None:
         sim = self.sim
@@ -230,15 +241,15 @@ class MailboxRuntime:
         elif action.stage == _Stage.PUBLISH or action.stage == _Stage.LOOKUP:
             job.pending = action
             writing = action.stage == _Stage.PUBLISH
-            if not writing and action.source != action.target:
-                sim.channel_crossing(job.recipient, action, entering=False)
+            if not writing and (len(action.data) != 28 or action.ticket != job.ticket):
+                raise ValueError("Invalid manifest page request")
             sim.schedule(
                 DHTRequest(
                     source=job.gateway,
-                    token=job.token,
+                    token=job.token if writing else f"{job.token}/{action.ticket}",
                     lane=job.lane,
                     message_id=job.message_id,
-                    key=int.from_bytes(job.handle, "big"),
+                    key=int.from_bytes(job.handle if writing else action.data[:20], "big"),
                     value=action.data if writing else None,
                 )
             )
@@ -246,14 +257,45 @@ class MailboxRuntime:
             self._labels[job.recipient, job.handle] = job.message_id
             sim.inboxes[job.recipient].messages.append(job.handle)
             self._end(job)
-        elif action.stage == _Stage.ENTER:
-            sim.channel_crossing(job.recipient, action, entering=True)
-            self._move(job.step(_Stage.LOOKUP, person.tor.id, job.gateway))
-        elif action.stage == _Stage.RETURN:
-            sim.channel_crossing(job.recipient, action, entering=True)
-            self._move(job.step(_Stage.OPEN, person.tor.id, person.id, data=action.data))
+        elif action.stage == _Stage.REQUEST:
+            request = job.handle + len(job.pages).to_bytes(8, "big")
+            failure = MailboxTimeout(
+                source=person.id,
+                target=person.id,
+                token=job.token,
+                message_id=job.message_id,
+                lane=job.lane,
+                continuation=action,
+            )
+            job.ticket = sim.retrieval.request(
+                person.id,
+                job.gateway,
+                request,
+                _PAGE_SIZE + 1,
+                job.step(_Stage.LOOKUP, job.gateway, job.gateway),
+                failure,
+            )
+            failure.ticket = job.ticket
+        elif action.stage == _Stage.PAGE:
+            # The authenticated response carries a continuation flag or a failure.
+            if action.data[:1] not in (b"0", b"1") or not action.data[1:]:
+                self._retry(
+                    job,
+                    job.step(_Stage.REQUEST, person.id, person.id),
+                    "Manifest page unavailable",
+                    transit=False,
+                )
+                return
+            if action.data[:1] == b"1" and len(action.data) != _PAGE_SIZE + 1:
+                raise ValueError("Incomplete manifest page")
+            job.retries = 0
+            job.pages.extend(action.data[1:])
+            job.ticket = ""
+            if action.data[:1] == b"1":
+                sim.schedule(job.step(_Stage.REQUEST, person.id, person.id))
+            else:
+                sim.schedule(job.step(_Stage.OPEN, person.id, person.id, data=bytes(job.pages)))
         elif action.stage == _Stage.OPEN:
-            sim.channel_crossing(job.recipient, action, entering=False)
             decrypted = unseal(person.private_key, action.data, "manifest")
             contents = _ManifestContents.model_validate_json(decrypted)
             job.message_id = contents.message_id
@@ -265,39 +307,22 @@ class MailboxRuntime:
                 size=len(action.data),
                 integrity="verified",
             )
-            self._move(job.step(_Stage.FETCH, person.id, person.tor.id, manifest=contents.manifest))
+            sim.schedule(job.step(_Stage.FETCH, person.id, person.id, manifest=contents.manifest))
         elif action.stage == _Stage.FETCH:
-            if action.source != action.target:
-                sim.channel_crossing(job.recipient, action, entering=True)
             assert action.manifest is not None
             job.pending = action
-            sim.vaults.fetch(replace(action, source=person.tor.id), action.manifest)
-        elif action.stage == _Stage.FINISH:
-            sim.channel_crossing(job.recipient, action, entering=False)
-            self._end(job)
-            self._finished.add((job.recipient, job.handle))
-            sim.schedule(
-                BundleDelivered(
-                    source=action.source,
-                    target=person.id,
-                    token=job.token,
-                    lane=job.lane,
-                    message_id=job.message_id,
-                    ciphertext=action.data,
-                )
-            )
+            sim.vaults.fetch(action, action.manifest)
 
     def handle(self, action: Action) -> bool:
         if isinstance(action, VaultRead):
             owner = self._jobs.get(action.token)
-            if owner is not None and not owner.egress and not isinstance(action, VaultMiss):
-                # VaultRead success callbacks retain request orientation for replica selection.
-                # BytesReturned actually travels from the vault back to the access channel.
-                returning = isinstance(action, BytesReturned)
-                leg = (
-                    replace(action, source=action.target, target=action.source) if returning else action
-                )
-                self.sim.channel_crossing(owner.recipient, leg, entering=returning)
+            if (
+                owner
+                and not owner.egress
+                and not self.sim.clients.people[owner.recipient].polling_enabled
+            ):
+                self._restore(owner)
+                return True
             return False
         if isinstance(action, PacketDelivered):
             self._publish(action)
@@ -309,19 +334,44 @@ class MailboxRuntime:
             action, (MailboxStep, MailboxTimeout, DHTResult, Placed, Reconstructed, VaultFailed)
         ):
             return False
-        job = self._jobs.get(action.token)
+        job_token, _, lookup_ticket = action.token.partition("/")
+        job = self._jobs.get(job_token)
         if job is None:
             return isinstance(action, (MailboxStep, MailboxTimeout)) or action.token.startswith(
                 "mailbox-"
             )
+        if not job.egress:
+            if isinstance(action, DHTResult) and (
+                lookup_ticket != job.ticket or job.pending is None or job.pending.stage != _Stage.LOOKUP
+            ):
+                return True
+            if (
+                isinstance(action, (MailboxStep, MailboxTimeout))
+                and action.ticket
+                and action.ticket != job.ticket
+            ):
+                return True
         if not job.egress and not self.sim.clients.people[job.recipient].polling_enabled:
             self._restore(job)
             return True
         try:
             if isinstance(action, MailboxTimeout):
-                self._retry(job, action.continuation, "Mailbox transport unresponsive", transit=True)
+                self._retry(
+                    job, action.continuation, "Mailbox transport unresponsive", transit=bool(job.egress)
+                )
             elif isinstance(action, MailboxStep):
-                if not self.sim.topology.nodes[action.target].online:
+                if (
+                    not job.egress
+                    and action.stage == _Stage.LOOKUP
+                    and not self.sim.topology.nodes[action.target].online
+                ):
+                    self._retry(
+                        job,
+                        job.step(_Stage.REQUEST, job.recipient, job.recipient),
+                        "Gateway unavailable",
+                        transit=False,
+                    )
+                elif not self.sim.topology.nodes[action.target].online:
                     self._retry(
                         job,
                         action,
@@ -332,7 +382,10 @@ class MailboxRuntime:
                     self._step(job, action)
             elif isinstance(action, VaultFailed):
                 assert job.pending is not None
-                self._retry(job, job.pending, action.reason, transit=False)
+                if job.egress:
+                    self._retry(job, job.pending, action.reason, transit=False)
+                else:
+                    self._fail(job, action.reason)
             elif isinstance(action, Placed):
                 job.pending = None
                 content = _ManifestContents(message_id=job.message_id, manifest=action.manifest)
@@ -340,7 +393,7 @@ class MailboxRuntime:
                 self.sim.schedule(job.step(_Stage.PUBLISH, job.gateway, job.gateway, data=sealed))
             elif isinstance(action, DHTResult):
                 assert job.pending is not None
-                if not action.result.success or (not job.egress and action.result.value is None):
+                if job.egress and not action.result.success:
                     self._retry(job, job.pending, "Mailbox DHT operation failed", transit=False)
                 elif job.egress:
                     self.sim.emit(
@@ -353,12 +406,29 @@ class MailboxRuntime:
                     job.pending = None
                     self._move(job.step(_Stage.DEPOSIT, job.gateway, job.egress))
                 else:
-                    assert action.result.value is not None
+                    offset = int.from_bytes(job.pending.data[20:], "big")
+                    value = action.result.value if action.result.success else None
+                    page = b"-"
+                    if value and offset < len(value):
+                        piece = value[offset : offset + _PAGE_SIZE]
+                        page = (b"1" if offset + len(piece) < len(value) else b"0") + piece
+                    failure = MailboxTimeout(
+                        source=job.recipient,
+                        target=job.recipient,
+                        token=job.token,
+                        lane=job.lane,
+                        message_id=job.message_id,
+                        continuation=job.step(_Stage.REQUEST, job.recipient, job.recipient),
+                        ticket=job.ticket,
+                    )
+                    self.sim.retrieval.reply(
+                        job.ticket,
+                        page,
+                        replace(job.step(_Stage.PAGE, job.recipient, job.recipient), ticket=job.ticket),
+                        failure,
+                    )
                     job.pending = None
-                    channel = self.sim.clients.people[job.recipient].tor.id
-                    self._move(job.step(_Stage.RETURN, job.gateway, channel, data=action.result.value))
             elif isinstance(action, Reconstructed):
-                channel = self.sim.clients.people[job.recipient].tor.id
                 job.pending = None
                 self.sim.emit(
                     "message_reconstructed",
@@ -367,7 +437,18 @@ class MailboxRuntime:
                     size=len(action.ciphertext),
                     integrity="verified",
                 )
-                self._move(job.step(_Stage.FINISH, channel, job.recipient, data=action.ciphertext))
+                self._end(job)
+                self._finished.add((job.recipient, job.handle))
+                self.sim.schedule(
+                    BundleDelivered(
+                        source=job.recipient,
+                        target=job.recipient,
+                        token=job.token,
+                        lane=job.lane,
+                        message_id=job.message_id,
+                        ciphertext=action.ciphertext,
+                    )
+                )
         except ValueError:
             self._fail(job, "Invalid mailbox envelope or manifest")
         return True

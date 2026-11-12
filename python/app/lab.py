@@ -49,6 +49,9 @@ class Laboratory(StorageSimulation):
                 "first_16_bytes_hex": data[:16].hex(),
             }
 
+        retrieval = self.retrieval.cargo(hop)
+        if retrieval is not None:
+            return retrieval
         if isinstance(hop, PacketArrival):
             packet = self.packets.traffic.packets[hop.token]
             return {"kind": "Sphinx packet", "attempt": packet.attempt, **encrypted(packet.wire)}

@@ -26,7 +26,7 @@
   const components = {
     person:
       'A simulated handset or computer running the messaging client. It encrypts outgoing messages and decrypts received messages. The enclosed public key lets the recipient encrypt a reply.',
-    tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
+    tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. The device uses Tor to reach its provider.',
     shadowsocks:
       'A simulated Outline Shadowsocks proxy. It sees the device IP on its incoming connection. The next server sees the proxy’s outgoing IP.',
     direct:
@@ -67,7 +67,7 @@
       Object.entries(p.active).map(([id, t]) => ({ id, path: p.id, ...t })),
     ),
   );
-  let history = $derived(relevant(events, node?.id ?? '', path));
+  let history = $derived(relevant(events, node?.id ?? '', path, pageSize + 1));
   let lineage = $derived(
     node
       ? lab.lineage
@@ -144,6 +144,13 @@
       >
     </header>
     <p>{components[node.kind]}</p>
+    {#if ['tor', 'shadowsocks', 'direct', 'storage', 'dht'].includes(node.kind) && lab.profiles.some((profile) => profile.id === 'anonymous-retrieval')}
+      <p>
+        Manifest and fragment requests cross three mix layers. The service sends
+        its response through a single-use reply block prepared by the reading
+        device.
+      </p>
+    {/if}
     {#if device?.signing_fingerprint}
       <p>
         This device signs outgoing messages with Ed25519. The recipient checks
@@ -507,6 +514,17 @@
         {#each info.profile.boundaries as limit (limit)}<p>
             {limit}
           </p>{/each}
+        {#if node.kind === 'storage' || node.kind === 'dht' || node.kind === 'provider'}
+          {#each lab.profiles.filter((profile) => profile.id === 'anonymous-retrieval') as retrieval (retrieval.id)}
+            <h4>{retrieval.name}</h4>
+            {#each retrieval.operations as operation (operation)}<p>
+                {operation}
+              </p>{/each}
+            {#each retrieval.boundaries as boundary (boundary)}<p>
+                {boundary}
+              </p>{/each}
+          {/each}
+        {/if}
       </details>{/if}
   </aside>
 {:else if path}

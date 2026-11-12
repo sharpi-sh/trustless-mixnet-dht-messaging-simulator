@@ -53,7 +53,10 @@ def test_per_side_channel_endpoints_and_ip_views_are_published_in_both_direction
             participant_ip,
             person,
         )
-        for remote in (provider, "dht-1", "storage-1"):
+        for service in ("dht-1", "storage-1"):
+            assert lab.topology.path_id(endpoint.id, service) not in paths
+            assert lab.topology.path_id(lab.topology.service_gateways[service], service) in paths
+        for remote in (provider,):
             peer_ip = nodes[remote].simulated_address
             remote_leg = paths[lab.topology.path_id(endpoint.id, remote)]
             forwards, backwards = remote_leg.ip_hops[endpoint.id], remote_leg.ip_hops[remote]

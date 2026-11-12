@@ -44,9 +44,9 @@ class MailboxExperiment(StorageSimulation):
                 return
         raise AssertionError("Mailbox operation did not finish")
 
-    def send(self):
+    def send(self, body=b"secret envelope"):
         recipient = self.clients.people["receiver-1"]
-        data = seal(recipient.public_key, b"secret envelope", "bundle")
+        data = seal(recipient.public_key, body, "bundle")
         self.schedule(
             PacketDelivered(
                 source="provider-east",
@@ -97,12 +97,19 @@ def test_only_handle_is_queued_and_full_read_crosses_owned_links():
         ("provider-east", "dht-1"),
         ("dht-1", "provider-east"),
         ("receiver-1", "tor-receiver-1"),
-        ("tor-receiver-1", "dht-3"),
-        ("dht-3", "tor-receiver-1"),
+        ("tor-receiver-1", "provider-east"),
+        ("provider-east", "tor-receiver-1"),
         ("tor-receiver-1", "receiver-1"),
     ]:
         assert (a, b) in edges
-    assert any(a == "tor-receiver-1" and b.startswith("storage-") for a, b in edges)
+    assert any(a.startswith("provider-") and b.startswith("storage-") for a, b in edges)
+    assert any(a.startswith("storage-") and b.startswith("provider-") for a, b in edges)
+    assert any(a.startswith("mix-") and b.startswith("mix-") for a, b in edges)
+    assert not any(
+        (a.startswith(("dht-", "storage-")) and b == recipient.tor.id)
+        or (a == recipient.tor.id and b.startswith(("dht-", "storage-")))
+        for a, b in edges
+    )
     assert recipient.tor.entry_count == recipient.tor.exit_count
     publish = next(e for e in events if e.event_type == "manifest_published")
     fetched = next(e for e in events if e.event_type == "manifest_retrieved")
@@ -158,3 +165,57 @@ def test_foreign_recipient_cannot_open_a_copied_handle():
     sim.through(lambda: sim.result is not None)
     assert isinstance(sim.result, MailboxFailed)
     assert not any(e.event_type == "manifest_retrieved" for e in sim.events)
+
+
+def test_multi_page_manifest_and_parallel_fragment_returns_reassemble_on_device():
+    sim = MailboxExperiment()
+    expected = sim.send(bytes(range(256)))
+    sim.through(lambda: bool(sim.inboxes["receiver-1"].messages))
+    sim.poll()
+    sim.through(lambda: sim.result is not None)
+    assert isinstance(sim.result, BundleDelivered)
+    assert sim.result.source == sim.result.target == "receiver-1"
+    assert sim.result.ciphertext == expected
+    manifest = next(e for e in sim.events if e.event_type == "manifest_retrieved")
+    assert manifest.payload["size"] > 2 * 864
+    chunks = [e for e in sim.events if e.event_type == "fragment_retrieved"]
+    assert len(chunks) > 1
+    assert all(e.source_id == "receiver-1" for e in chunks)
+    assert not sim.mail._jobs and not sim.vaults.reads
+
+
+def test_lost_request_retries_without_any_channel_to_service_fallback():
+    sim = MailboxExperiment(max_retries=1)
+    sim.send()
+    sim.through(lambda: bool(sim.inboxes["receiver-1"].messages))
+    channel = sim.clients.people["receiver-1"].tor.id
+    path = sim.topology.paths[sim.topology.path_id(channel, "provider-east")]
+    path.blocked = True
+    sim.poll()
+    sim.through(lambda: sim.result is not None)
+    assert isinstance(sim.result, MailboxFailed)
+    assert any(e.event_type == "mailbox_retry" for e in sim.events)
+    assert not any(e.event_type == "manifest_retrieved" for e in sim.events)
+    assert not sim.mail._jobs and not sim.vaults.reads
+
+
+def test_delayed_manifest_lookup_result_cannot_spend_a_new_reply_block():
+    from app.dht_runtime import DHTResult
+    from app.kad_types import Complete
+    from app.retrieval import RetrievalFailure
+
+    sim = MailboxExperiment()
+    ciphertext = sim.send()
+    sim.through(lambda: bool(sim.inboxes["receiver-1"].messages))
+    sim.poll()
+    sim.through(lambda: any(job.pending and not job.egress for job in sim.mail._jobs.values()))
+    job = next(job for job in sim.mail._jobs.values() if not job.egress)
+    job_id, ticket = job.token, job.ticket
+    op = f"{job_id}/{ticket}"
+    sim.retrieval.handle(RetrievalFailure(exchange=ticket, reason="expired"))
+    sim.through(lambda: bool(sim.mail._jobs[job_id].ticket and sim.mail._jobs[job_id].ticket != ticket))
+    new_ticket = sim.mail._jobs[job_id].ticket
+    sim.mail.handle(DHTResult(token=op, result=Complete(op, True, b"stale", ())))
+    assert sim.mail._jobs[job_id].ticket == new_ticket
+    sim.through(lambda: sim.result is not None)
+    assert isinstance(sim.result, BundleDelivered) and sim.result.ciphertext == ciphertext

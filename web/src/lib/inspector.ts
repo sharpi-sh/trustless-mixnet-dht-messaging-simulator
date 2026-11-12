@@ -39,19 +39,22 @@ export function relevant(
   events: LabEvent[],
   nodeId: string,
   path: Pick<Path, 'id' | 'source_id' | 'target_id'> | undefined,
+  limit = Infinity,
 ): LabEvent[] {
-  return events
-    .filter((e) =>
-      nodeId
-        ? e.source_id === nodeId ||
-          e.target_id === nodeId ||
-          e.payload.person_id === nodeId ||
-          e.payload.peer === nodeId
-        : path &&
-          (e.payload.path_id === path.id ||
-            (e.source_id === path.source_id &&
-              e.target_id === path.target_id) ||
-            (e.source_id === path.target_id && e.target_id === path.source_id)),
-    )
-    .reverse();
+  const rows: LabEvent[] = [];
+  if (!nodeId && !path) return rows;
+  for (let i = events.length - 1; i >= 0 && rows.length < limit; i--) {
+    const e = events[i];
+    const matches = nodeId
+      ? e.source_id === nodeId ||
+        e.target_id === nodeId ||
+        e.payload.person_id === nodeId ||
+        e.payload.peer === nodeId
+      : path &&
+        (e.payload.path_id === path.id ||
+          (e.source_id === path.source_id && e.target_id === path.target_id) ||
+          (e.source_id === path.target_id && e.target_id === path.source_id));
+    if (matches) rows.push(e);
+  }
+  return rows;
 }

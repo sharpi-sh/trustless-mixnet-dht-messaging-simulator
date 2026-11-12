@@ -16,6 +16,11 @@ FIRST_HOP_STEP_LIMIT = 5000
 # Keep controls and the event stream live while stepping over protocol traffic.
 STREAM_BATCH_STEPS = 32
 IDLE_PLAYBACK_STEPS = 256
+# Faster than one display frame: group changes into at most eight projections
+# per second, flushing sooner for controls, the first departure or a full batch.
+FAST_PLAYBACK_MS = 16
+STREAM_INTERVAL = 0.125
+STREAM_EVENT_LIMIT = 512
 MESSAGE_EVENTS = OPERATIONS.keys() | {
     "path_transit_started",
     "path_transit_completed",
@@ -59,6 +64,7 @@ class _Session:
     speed_changed: asyncio.Event = field(default_factory=asyncio.Event)
     runner: asyncio.Task[None] | None = None
     published_sequence: int = 0
+    control_sequence: int = 0
     first_hop_budget: int = 0
     receipts: dict[str, _Receipt] = field(default_factory=dict)
 
@@ -98,6 +104,32 @@ class Service:
                     or session.published_sequence > seq
                 )
             )
+
+    async def wait_stream(self, simulation_id: str, epoch: int, cursor: int, last_sent: float) -> None:
+        await self.wait(simulation_id, epoch, cursor)
+        session = self._sessions[simulation_id]
+        lab = session.lab
+        deadline = last_sent + STREAM_INTERVAL
+
+        def flush_now() -> bool:
+            return (
+                self._closed
+                or self.epochs[simulation_id] != epoch
+                or lab.status != "running"
+                or lab.step_delay_ms > FAST_PLAYBACK_MS
+                or cursor < session.control_sequence
+                or cursor < (lab.first_message_hop_sequence or 0)
+                or session.published_sequence - cursor >= STREAM_EVENT_LIMIT
+            )
+
+        async with session.changed:
+            if flush_now() or asyncio.get_running_loop().time() >= deadline:
+                return
+            try:
+                async with asyncio.timeout_at(deadline):
+                    await session.changed.wait_for(flush_now)
+            except TimeoutError:
+                pass
 
     @staticmethod
     def _cancel_runner(session: _Session) -> None:
@@ -299,6 +331,7 @@ class Service:
                 session.receipts[cmd.command_id] = _Receipt(request, error=str(exc))
                 raise ValueError(str(exc)) from exc
             finally:
+                session.control_sequence = len(lab.events)
                 session.publish()
             result = {"status": lab.status}
             session.receipts[cmd.command_id] = _Receipt(request, result=result)

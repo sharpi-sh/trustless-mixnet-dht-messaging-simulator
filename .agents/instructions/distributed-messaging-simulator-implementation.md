@@ -700,7 +700,7 @@ Each participant owns a connection channel. Sender and recipient roles can indep
 - Outline Shadowsocks models a proxy with a client-facing address and a server egress address. The proxy sees the device's IP on entry. The next service sees the proxy's IP. The simulation represents address visibility without implementing the Shadowsocks wire protocol.
 - Direct requests use the device's own network-facing IP. The diagram can represent its local interface. The first remote service observes the device IP.
 
-Label both channel columns by role and show each device's simulated IP address in its selected conversation header. Each recorded journey segment must expose the source and destination IPs for that direction, identify the observer and preserve the cargo inspection. Transport addresses are independent of signed application identity. A channel choice changes device access to the network. Loopix routes for message deposit and the existing retrieval policy still apply.
+Label both channel columns by role and show each device's simulated IP address in its selected conversation header. Each recorded journey segment must expose the source and destination IPs for that direction, identify the observer and preserve the cargo inspection. Transport addresses are independent of signed application identity. A channel choice changes device access to the network. The selected channel connects to the device’s provider. Both manifest and fragment retrieval use mixed forward requests and single-use anonymous reply blocks for the return journey. Service responses must traverse the mix layers before reaching the participant channel.
 
 ## 4.5 Mixnet manager
 

@@ -110,6 +110,28 @@ def profiles(c: Config, *, all_channels: bool = False) -> list[Profile]:
         ),
         *_channel_profiles(c, all_channels),
         Profile(
+            id="anonymous-retrieval",
+            name="Anonymous retrieval — Nym-inspired Sphinx reply blocks",
+            year=2021,
+            reference="https://nymtech.net/nym-whitepaper.pdf#page=15",
+            parameters={"mix_layers": 3, "reply_block_uses": 1},
+            operations=[
+                "Send a manifest or fragment request through the mixnet",
+                "Supply a precomputed, independently selected return route",
+                "Receive the encrypted response through single-use reply blocks",
+            ],
+            boundaries=[
+                (
+                    "Local retrieval protocol using the simulator’s Sphinx packet format. "
+                    "Live Nym compatibility and network anonymity are outside the model."
+                ),
+                (
+                    "A storage service can correlate repeated identifiers and request timing. "
+                    "The simulator event trace can correlate both legs of an exchange."
+                ),
+            ],
+        ),
+        Profile(
             id="replicated-storage",
             name="Replicated chunk-storage model",
             parameters={"replicas": c.replicas, "chunk_bytes": c.chunk_bytes},

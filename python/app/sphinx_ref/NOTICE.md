@@ -10,7 +10,7 @@ This project maintains the Python 3 port. It replaces petlib's OpenSSL
 bindings with PyCryptodome, cryptography (SEC1 point decoding) and current
 MessagePack, uses constant-time header
 MAC comparison, preserves the binary route flags used by the Python 2
-prototype and omits SURBs. The algorithm uses NIST P-224, AES-128-CTR, the
+prototype. The algorithm uses NIST P-224, AES-128-CTR, the
 UCL LIONESS construction, HMAC-SHA-256 truncated to 16 bytes and a per-hop
 16-byte replay tag. The application envelope supplies separate authenticated
 content encryption. [2017 Loopix implementation](https://github.com/UCL-InfoSec/loopix/tree/440db95fdd2bcb28d76aca1b86f072715ef7005a)
@@ -31,3 +31,12 @@ The build fixture fixes only the oracle's test ephemeral exponent and random
 header filler, and verifies port-produced packet bytes against the original
 constructor. The standalone Python 2 generation script accompanies the
 fixtures in the tests directory.
+
+
+For anonymous retrieval, the wrapper reuses the header construction and LIONESS
+per-hop transforms with a single-use reply header. Its terminal command carries
+the simulated delivery address and private reply identifier. An outer serialisation
+carries the first-hop identifier, encoded header and reply payload key. The reply
+body uses the authenticated padding construction in the [UCL client](https://github.com/UCL-InfoSec/sphinx/blob/master/sphinxmix/SphinxClient.py).
+The simulator uses its own addressing and framing. Forward interoperability
+vectors apply only to forward datagrams. [Nym whitepaper, section 4.5](https://nymtech.net/nym-whitepaper.pdf)
