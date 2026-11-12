@@ -364,8 +364,18 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   for (const operation of ['message_signed', 'sender_signature_verified']) {
     await expect(ledger.getByText(operation, { exact: true })).toBeVisible();
   }
-  for (const role of ['sender', 'receiver'] as const) {
-    const device = final.devices.find((p) => p.role === role)!;
+  for (const device of final.devices) {
+    const role = device.role;
+    const avatar = graph.locator('[data-node-id="' + device.id + '"]');
+    if (device.id === 'sender-2') await avatar.press('Enter');
+    else await avatar.click();
+    await expect(avatar).toHaveAttribute('aria-pressed', 'true');
+    for (const other of final.devices.filter(
+      (d) => d.role === role && d.id !== device.id,
+    ))
+      await expect(
+        graph.locator('[data-node-id="' + other.id + '"]'),
+      ).toHaveAttribute('aria-pressed', 'false');
     const panel = page.getByRole('complementary', {
       name:
         role === 'sender' ? 'Sender conversations' : 'Recipient conversations',
@@ -411,16 +421,15 @@ test('completes the live thirty-transmission scenario with edited text, polling,
       bubble.getByText(first.signing_fingerprint!, { exact: true }),
     ).toBeVisible();
     await bubble.getByText('Signature verified', { exact: true }).click();
-    const card = graph.locator('[data-node-id="' + device.id + '"]');
-    await expect(card).not.toContainText(edited);
-    await expect(card.locator('[data-last-sent]')).toHaveAttribute(
+    await expect(avatar).not.toContainText(edited);
+    await expect(panel.locator('[data-last-sent]')).toHaveAttribute(
       'data-last-sent',
       String(
         sentReceived.filter((row) => row.state !== 'received').at(-1)!
           .simulation_time_ms,
       ),
     );
-    await expect(card.locator('[data-last-received]')).toHaveAttribute(
+    await expect(panel.locator('[data-last-received]')).toHaveAttribute(
       'data-last-received',
       String(
         sentReceived.filter((row) => row.state === 'received').at(-1)!

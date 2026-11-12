@@ -81,7 +81,15 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
   });
   for (const device of [alice, bob])
     await expect(
-      graph.locator('[data-node-id="' + device.id + '"] [data-device-ip]'),
+      page
+        .getByRole('complementary', {
+          name:
+            device.id === alice.id
+              ? 'Sender conversations'
+              : 'Recipient conversations',
+          exact: true,
+        })
+        .locator('[data-device-ip]'),
     ).toHaveText(device.simulated_address);
   await expect(
     page.getByText(
