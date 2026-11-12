@@ -19,6 +19,8 @@ class DHTNode:
     address: str
     table: DHTRoutingTable = field(init=False, compare=False)
     records: dict[int, Record] = field(default_factory=dict, repr=False)
+    originals: dict[int, Record] = field(default_factory=dict, repr=False)
+    replica_due: dict[int, int] = field(default_factory=dict, repr=False)
     observations: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
@@ -32,6 +34,7 @@ class DHTNode:
         value = self.records.get(key)
         if value and value.expires_at <= now:
             del self.records[key]
+            self.replica_due.pop(key, None)
             return None
         return value
 
@@ -46,6 +49,8 @@ class DHTNetwork:
         self._allocated_ids: set[int] = set()
         self._calls: dict[int, Outstanding] = {}
         self._searches: dict[str, Search] = {}
+        self._join_refresh: dict[str, set[str]] = {}
+        self._serial = 0
 
     def add_node(self, peer_id: str, node_id: int | None = None) -> DHTNode:
         if not peer_id or peer_id in self.nodes:
@@ -101,16 +106,41 @@ class DHTNetwork:
         return self._send(peer, probe.old.peer, "PING", now, probe=probe)
 
     def _hear(self, node: DHTNode, contact: Contact, now: int) -> list[Effect]:
+        first_seen = contact.peer not in node.observations
         observation = node.observations.setdefault(contact.peer, {"failures": 0})
         observation.update(last_contact_ms=now, status="responded")
         probe = node.table.observe(contact, now)
-        return [Notice("kademlia_bucket_updated", node.peer_id, {"contact": contact.peer}),
-                *self._probe(node.peer_id, probe, now)]
+        effects: list[Effect] = [Notice("kademlia_bucket_updated", node.peer_id, {"contact": contact.peer}),
+                                 *self._probe(node.peer_id, probe, now)]
+        if first_seen:
+            # Only the previous closest holder transfers records to a newly learnt peer (§2.5).
+            for key in list(node.replica_due):
+                record = node.record(key, now)
+                others = [c for c in node.table.closest(key, K + 1) if c.peer != contact.peer]
+                if (record and all(node.node_id ^ key < c.node_id ^ key for c in others)
+                        and sum(c.node_id ^ key < contact.node_id ^ key
+                                for c in [*others, node.contact]) < K):
+                    effects.extend(self._send(node.peer_id, contact.peer, "STORE", now, key, record))
+        return effects
 
-    def _store(self, node: DHTNode, key: int, record: Record, now: int) -> None:
+    def _store(self, node: DHTNode, key: int, record: Record, now: int,
+               cached: bool = False) -> list[Effect]:
         previous = node.record(key, now)
-        if record.expires_at > now and (previous is None or previous.published_at <= record.published_at):
-            node.records[key] = record
+        if record.expires_at <= now or (previous and previous.published_at > record.published_at):
+            return []
+        # A cache copy of the same publication must not shorten an existing replica's lifetime.
+        if previous and previous.published_at == record.published_at:
+            if cached and key in node.replica_due:
+                return []
+            if previous.expires_at > record.expires_at:
+                record = previous
+        node.records[key] = record
+        if cached:
+            node.replica_due.pop(key, None)
+            return []
+        due = now + HOUR
+        node.replica_due[key] = due
+        return [Timer(due, peer=node.peer_id, kind="replica", key=key)] if due < record.expires_at else []
 
     def receive(self, wire: Rpc, now: int) -> list[Effect]:
         if wire.sender.peer != wire.source or wire.target not in self.nodes:
@@ -131,7 +161,7 @@ class DHTNetwork:
         contacts: tuple[Contact, ...] = ()
         record = None
         if wire.method == "STORE" and wire.record:
-            self._store(node, wire.key, wire.record, now)
+            effects.extend(self._store(node, wire.key, wire.record, now, wire.cached))
         if wire.method == "FIND_VALUE":
             record = node.record(wire.key, now)
         if wire.method in ("FIND_VALUE", "FIND_NODE") and record is None:
@@ -141,6 +171,17 @@ class DHTNetwork:
         return [*effects, self._notice(reply, True), reply]
 
     def wake(self, timer: Timer, now: int) -> list[Effect]:
+        if timer.kind != "rpc":
+            if now < timer.at:
+                return []
+            node = self.nodes[timer.peer]
+            if timer.kind == "publisher":
+                record = node.originals.get(timer.key)
+                if record and record.published_at + DAY <= now:
+                    return self.publish(self._internal("publisher"), timer.peer, timer.key, record.value, now)
+            elif timer.kind == "replica":
+                return self._republish(node, timer.key, now)
+            return []
         call = self._calls.get(timer.rpc_id)
         if call is None or call.expired or now < timer.at:
             return []
@@ -161,7 +202,43 @@ class DHTNetwork:
         return self._start(Search(op_id, peer, key, "nodes"), now)
 
     def publish(self, op_id: str, peer: str, key: int, value: bytes, now: int) -> list[Effect]:
-        return self._start(Search(op_id, peer, key, "publish", Record(value, now, now + DAY)), now)
+        record = Record(value, now, now + DAY)
+        effects = self._start(Search(op_id, peer, key, "publish", record), now)
+        self.nodes[peer].originals[key] = record
+        return [*effects, Timer(now + DAY, peer=peer, kind="publisher", key=key)]
+
+    def _internal(self, operation: str) -> str:
+        self._serial += 1
+        return f"kademlia/{operation}/{self._serial}"
+
+    def join(self, peer: str, bootstrap: str | None, now: int) -> list[Effect]:
+        node = self.nodes[peer]
+        op_id = f"join-{peer}"
+        if bootstrap is None:
+            return [Complete(op_id, True, None, ())]
+        contact = self.nodes[bootstrap].contact  # The single out-of-band bootstrap address.
+        effects = self._probe(peer, node.table.observe(contact, now), now)
+        return [*effects, *self._start(Search(op_id, peer, node.node_id, "join"), now)]
+
+    def _republish(self, node: DHTNode, key: int, now: int) -> list[Effect]:
+        record = node.record(key, now)
+        due = node.replica_due.get(key)
+        if record is None or due is None or now < due:
+            return []
+        node.replica_due[key] = now + HOUR
+        return self._start(Search(self._internal("replica"), node.peer_id, key, "republish", record), now)
+
+    def maintenance(self, peer: str, now: int) -> list[Effect]:
+        node = self.nodes[peer]
+        effects: list[Effect] = []
+        for target in node.table.refresh_targets(now, self.rng):
+            effects.extend(self._start(Search(self._internal("refresh"), peer, target, "refresh"), now))
+        for key, record in list(node.originals.items()):
+            if record.published_at + DAY <= now:
+                effects.extend(self.publish(self._internal("publisher"), peer, key, record.value, now))
+        for key in list(node.records):
+            effects.extend(self._republish(node, key, now))
+        return effects
 
     def _start(self, search: Search, now: int) -> list[Effect]:
         if not 0 <= search.key < ID_SPACE or search.op_id in self._searches:
@@ -179,7 +256,7 @@ class DHTNetwork:
         nearest = search.nearest()[:K]
         if all(c.peer in search.responded for c in nearest):
             peers = tuple(c.peer for c in nearest)
-            if search.purpose == "publish":
+            if search.purpose in ("publish", "republish"):
                 return self._replicate(search, peers, now)
             return self._finish(search, search.purpose != "value", None, peers, now)
         pending = search.queried - search.responded - search.silent
@@ -207,7 +284,7 @@ class DHTNetwork:
         search.storing = True
         for holder in holders[:K]:
             if holder.peer == node.peer_id:
-                self._store(node, search.key, search.record, now)
+                effects.extend(self._store(node, search.key, search.record, now))
                 search.stored.add(holder.peer)
             else:
                 search.store_pending.add(holder.peer)
@@ -240,7 +317,18 @@ class DHTNetwork:
         else:
             search.silent.discard(q.target)
             if reply.record and reply.record.expires_at > now and q.method == "FIND_VALUE":
-                return self._finish(search, True, reply.record.value, (q.target,), now)
+                effects: list[Effect] = []
+                misses = [c for c in search.nearest() if c.peer in search.responded]
+                if misses:
+                    cache = misses[0]
+                    rank = sum(c.node_id ^ search.key < cache.node_id ^ search.key
+                               for c in search.contacts.values())
+                    # §2.3 specifies exponential expiry by rank, without prescribing a base.
+                    expires = min(reply.record.expires_at, now + max(1, DAY >> rank))
+                    copy = Record(reply.record.value, reply.record.published_at, expires)
+                    effects.extend(self._send(q.source, cache.peer, "STORE", now, search.key,
+                                              record=copy, cached=True))
+                return [*effects, *self._finish(search, True, reply.record.value, (q.target,), now)]
             search.responded.add(q.target)
             search.add(reply.contacts)
         return self._drive(search, now)
@@ -249,5 +337,28 @@ class DHTNetwork:
                 peers: tuple[str, ...], now: int) -> list[Effect]:
         del self._searches[search.op_id]
         for token in [t for t, call in self._calls.items() if call.op_id == search.op_id]:
-            del self._calls[token]
+            call = self._calls[token]
+            if call.expired:
+                del self._calls[token]
+            else:
+                # Remaining replies may still update local contacts after a first value hit.
+                call.op_id = ""
+        if search.purpose == "join":
+            if not peers:
+                return [Complete(search.op_id, False, None, ())]
+            targets = self.nodes[search.origin].table.refresh_targets(now, self.rng, joining=True)
+            refreshes = [(self._internal("join-refresh"), target) for target in targets]
+            if refreshes:
+                self._join_refresh[search.origin] = {op for op, target in refreshes}
+                effects: list[Effect] = []
+                for op, target in refreshes:
+                    effects.extend(self._start(Search(op, search.origin, target, "join-refresh"), now))
+                return effects
+        if search.purpose == "join-refresh":
+            remaining = self._join_refresh[search.origin]
+            remaining.discard(search.op_id)
+            if remaining:
+                return []
+            del self._join_refresh[search.origin]
+            return [Complete(f"join-{search.origin}", True, None, peers)]
         return [Complete(search.op_id, success, value, peers)]

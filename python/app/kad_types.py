@@ -32,7 +32,10 @@ class Rpc:
 @dataclass(frozen=True)
 class Timer:
     at: int
-    rpc_id: int
+    rpc_id: int = 0
+    peer: str = ""
+    kind: str = "rpc"
+    key: int = 0
 
 
 @dataclass(frozen=True)

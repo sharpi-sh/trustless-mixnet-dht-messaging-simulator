@@ -96,3 +96,70 @@ def test_all_unresponsive_times_out_once_and_keeps_local_observation():
     assert result == Complete("poll", False, None, ())
     assert dht.inspect("n1", 61)["observations"]["n2"]["status"] == "unresponsive"
     assert answer(dht, requests(outgoing)[0], 62) == []
+
+
+def test_join_uses_only_the_bootstrap_and_transfers_a_close_replica():
+    dht = network([20, 17, 2, 4, 89])
+    assert run(dht, dht.join("n20", None, 0)) == [Complete("join-n20", True, None, ())]
+    for name in ("n17", "n2"):
+        out = dht.join(name, "n20", 10)
+        assert [r.target for r in requests(out)] == ["n20"]
+        assert run(dht, out, 10)[0].success
+    run(dht, dht.publish("pub", "n17", 4, b"ciphertext", 100), 100)
+    result, = run(dht, dht.join("n4", "n20", 200), 200)
+    assert result.op_id == "join-n4" and result.success
+    assert dht.nodes["n4"].records[4].value == b"ciphertext"
+    assert not dht.nodes["n89"].records and not dht.nodes["n89"].table.closest(4)
+    assert dht.nodes["n4"].table.closest(4)[0].peer == "n2"
+
+
+def test_nearest_queried_miss_gets_rank_limited_cache_and_no_replica_timer():
+    from app.kademlia import DAY, Record
+
+    dht = network([100, 5, 7, 2])
+    for n in ("n2", "n5", "n7"):
+        introduce(dht, "n100", n)
+    dht.nodes["n2"].records[0] = Record(b"opaque", 0, DAY)
+    initial = requests(dht.lookup("read", "n100", 0, 0))
+    by_target = {r.target: r for r in initial}
+    assert not requests(answer(dht, by_target["n7"], 2))
+    assert not requests(answer(dht, by_target["n5"], 4))
+    result = answer(dht, by_target["n2"], 6)
+    cache, = requests(result)
+    assert cache.method == "STORE" and cache.target == "n5" and cache.cached
+    assert cache.record.expires_at == 7 + DAY // 2
+    complete, = [e for e in result if isinstance(e, Complete)]
+    assert complete.value == b"opaque"
+    run(dht, [cache], 7)
+    assert 0 not in dht.nodes["n5"].replica_due
+    assert dht.nodes["n5"].record(0, cache.record.expires_at) is None
+
+
+def test_logical_maintenance_suppression_publisher_renewal_and_expiry():
+    from app.kademlia import DAY, HOUR, Record
+
+    dht = network([1, 2])
+    run(dht, dht.join("n2", "n1", 0))
+    calls = dht.publish("pub", "n1", 3, b"manifest", 10)
+    publisher, = [e for e in calls if isinstance(e, Timer) and e.kind == "publisher"]
+    run(dht, calls, 10)
+    record = dht.nodes["n2"].records[3]
+    original_due = dht.nodes["n2"].replica_due[3]
+    # Another real STORE suppresses the previously scheduled replica republication.
+    repeated = dht._send("n1", "n2", "STORE", 100, 3, record)
+    run(dht, repeated, 100)
+    old = Timer(original_due, peer="n2", kind="replica", key=3)
+    assert dht.wake(old, original_due) == []
+    due = dht.nodes["n2"].replica_due[3]
+    republished = dht.wake(Timer(due, peer="n2", kind="replica", key=3), due)
+    assert requests(republished)[0].method == "FIND_NODE"
+    run(dht, republished, due)
+    assert dht.nodes["n1"].records[3].expires_at == 10 + DAY
+    assert dht.wake(publisher, 10 + DAY - 1) == []
+    renewal = dht.wake(publisher, 10 + DAY)
+    run(dht, renewal, 10 + DAY)
+    assert dht.nodes["n2"].records[3] == Record(b"manifest", 10 + DAY, 10 + 2 * DAY)
+    assert dht.nodes["n2"].record(3, 10 + 2 * DAY) is None
+    refreshes = dht.maintenance("n2", 10 + 3 * DAY)
+    assert any(e.method == "FIND_NODE" for e in requests(refreshes))
+    assert dht.maintenance("n2", 10 + 3 * DAY + HOUR - 1) == []
