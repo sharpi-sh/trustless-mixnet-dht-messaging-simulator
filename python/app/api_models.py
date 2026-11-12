@@ -18,6 +18,7 @@ CommandType = Literal[
     "pause",
     "resume",
     "step",
+    "step_to_first_message_hop",
     "stop",
     "reset",
     "set_playback_delay",
@@ -169,6 +170,7 @@ class NodeDetails(Model):
 
 
 class ClockDTO(Model):
+    first_message_hop_sequence: int | None = Field(None, ge=1)
     simulation_id: str
     epoch: int = Field(0, ge=0)
     sequence: int = Field(ge=0)

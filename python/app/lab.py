@@ -28,6 +28,7 @@ class Compose(Action):
 class Laboratory(StorageSimulation):
     def __init__(self, config: Config, simulation_id: str | None = None):
         super().__init__(config, simulation_id)
+        self.first_message_hop_sequence: int | None = None
         self.devices = DeviceProtocol(self.clients)
         self.polls = PollRuntime(self)
         self.mailbox = MailboxRuntime(self)
@@ -80,6 +81,10 @@ class Laboratory(StorageSimulation):
     def emit(self, kind: str, action: Action, **details: Any) -> None:
         if kind == "path_transit_started" and isinstance(action, Transit) and action.message_id:
             details["cargo"] = self.cargo(action.success)
+            if self.first_message_hop_sequence is None and isinstance(action.success, PacketArrival):
+                person = self.clients.people.get(action.source)
+                if person is not None and action.target == person.tor.id:
+                    self.first_message_hop_sequence = len(self.events) + 1
         super().emit(kind, action, **details)
         row = project(self.events[-1])
         if row is not None:
@@ -234,6 +239,7 @@ class Laboratory(StorageSimulation):
 
     def snapshot(self) -> dict[str, Any]:
         result = super().snapshot()
+        result["first_message_hop_sequence"] = self.first_message_hop_sequence
         if self.initialised:
             result["messages"] = [
                 m.model_dump(exclude={"text"}) for m in self.clients.messages.values()

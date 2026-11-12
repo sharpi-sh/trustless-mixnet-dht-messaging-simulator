@@ -11,6 +11,9 @@ from .lab import Laboratory
 from .steps import Action
 
 
+FIRST_HOP_STEP_LIMIT = 5000
+
+
 @dataclass
 class _Receipt:
     request: dict[str, Any]
@@ -24,6 +27,7 @@ class _Session:
     changed: asyncio.Condition = field(default_factory=asyncio.Condition)
     speed_changed: asyncio.Event = field(default_factory=asyncio.Event)
     runner: asyncio.Task[None] | None = None
+    first_hop_budget: int = 0
     receipts: dict[str, _Receipt] = field(default_factory=dict)
 
 
@@ -89,10 +93,20 @@ class Service:
                                 if step.result and step.result.detail
                                 else "Simulation step failed",
                             )
+                    if session.first_hop_budget and lab.status == "running":
+                        session.first_hop_budget -= 1
+                        if lab.first_message_hop_sequence is not None or not session.first_hop_budget:
+                            lab.lifecycle("pause")
+                            lab.emit(
+                                "first_message_hop_step_finished",
+                                Action(),
+                                departure_sequence=lab.first_message_hop_sequence,
+                                limit=FIRST_HOP_STEP_LIMIT,
+                            )
                     session.changed.notify_all()
                 if lab.status != "running":
                     break
-                if lab.step_delay_ms == 0:
+                if lab.step_delay_ms == 0 or session.first_hop_budget:
                     # Max-speed playback still gives commands and stream readers a turn.
                     await asyncio.sleep(0)
                     continue
@@ -143,8 +157,18 @@ class Service:
     def _update(self, session: _Session, cmd: Command) -> None:
         lab = session.lab
         kind = cmd.type
-        if kind in {"run", "resume", "step", "pause", "stop", "reset"}:
-            lab.lifecycle(kind)
+        if kind in {"run", "resume", "step", "pause", "stop", "reset", "step_to_first_message_hop"}:
+            seek = kind == "step_to_first_message_hop"
+            if seek and (
+                lab.status not in {"ready", "paused"} or lab.first_message_hop_sequence is not None
+            ):
+                raise ValueError(
+                    "First-hop stepping requires a ready or paused run before its first message departure"
+                )
+            lab.lifecycle("run" if seek else kind)
+            session.first_hop_budget = FIRST_HOP_STEP_LIMIT if seek else 0
+            if seek:
+                lab.emit("first_message_hop_step_started", Action(), limit=FIRST_HOP_STEP_LIMIT)
             if kind == "reset":
                 self.epochs[lab.id] += 1
                 lab.emit("simulation_reset", Action(), epoch=self.epochs[lab.id])
