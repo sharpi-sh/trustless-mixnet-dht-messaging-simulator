@@ -14,6 +14,14 @@ export function logicalStamp(ms: number) {
   );
 }
 
+export function verifiedSigner(row: DeviceLog): string | null {
+  return row.state === 'received' &&
+    row.verified_signer_id &&
+    row.signing_fingerprint
+    ? row.verified_signer_id
+    : null;
+}
+
 export function chatRows(logs: DeviceLog[]) {
   return logs.filter(
     (row) =>

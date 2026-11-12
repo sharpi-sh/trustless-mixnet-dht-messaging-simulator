@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
-  import { chatRows, logicalStamp } from './conversation';
+  import { chatRows, logicalStamp, verifiedSigner } from './conversation';
+  import SignatureReceipt from './SignatureReceipt.svelte';
   import { messageColour } from './graph-layout';
   import type { Device, Message } from './types';
 
@@ -21,7 +22,6 @@
   const choices = $derived(devices.filter((d) => d.role === role));
   const person = $derived(choices.find((d) => d.id === selected) ?? choices[0]);
   const names = $derived(new Map(devices.map((d) => [d.id, d.label])));
-  const plans = $derived(new Map(messages.map((m) => [m.id, m])));
   const conversations = $derived.by(() => {
     const peers = new SvelteMap<string, string>();
     for (const m of messages) {
@@ -101,7 +101,7 @@
       <ol aria-label={person.label + ' chat messages'}>
         {#each rows as row (row.message_id)}
           {@const own = row.state !== 'received'}
-          {@const msg = plans.get(row.message_id)}
+          {@const signer = verifiedSigner(row)}
           <li
             class:outgoing={own}
             data-message-id={row.message_id}
@@ -112,9 +112,12 @@
               <div class="author">
                 <i></i>{own
                   ? 'You'
-                  : (names.get(msg?.sender_id ?? '') ?? 'Received')}
+                  : signer
+                    ? (names.get(signer) ?? signer)
+                    : 'Unverified sender'}
               </div>
               <p>{row.text}</p>
+              {#if !own}<SignatureReceipt {row} />{/if}
             </div>
             <time title={row.simulation_time_ms + ' ms'}
               >{logicalStamp(row.simulation_time_ms)}</time

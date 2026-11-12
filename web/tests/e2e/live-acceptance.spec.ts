@@ -72,6 +72,10 @@ function assertDelivery(state: Snapshot, initial: Snapshot) {
       const message = expected.get(entry.message_id)!;
       expect(person.id).toBe(message.target_id);
       expect(entry.direction).toBe(message.direction);
+      const signer = state.devices.find((d) => d.id === message.sender_id)!;
+      expect(signer.signing_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(entry.verified_signer_id).toBe(signer.id);
+      expect(entry.signing_fingerprint).toBe(signer.signing_fingerprint);
       expect(entry.text).toBe(message.id === 'msg-1' ? edited : message.text);
       receipts.push(entry.message_id);
     }
@@ -267,6 +271,8 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     .filter((row) => row.message_id === 'msg-1')
     .map((r) => r.operation);
   for (const op of [
+    'message_signed',
+    'sender_signature_verified',
     'reply_key_encapsulated',
     'fragment_stored',
     'manifest_published',
@@ -276,7 +282,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   ])
     expect(lineage).toContain(op);
   expect(lineage.indexOf('reply_key_learned')).toBeGreaterThan(
-    lineage.indexOf('message_decrypted'),
+    lineage.indexOf('sender_signature_verified'),
   );
 
   await page
@@ -290,6 +296,19 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     inspector.getByRole('heading', { name: 'Device log' }),
   ).toBeVisible();
   await expect(inspector.getByText(edited, { exact: true })).toBeVisible();
+  const alice = final.devices.find((d) => d.id === 'sender-1')!;
+  const bob = final.devices.find((d) => d.id === 'receiver-1')!;
+  await expect(
+    inspector.getByText(bob.signing_fingerprint!, { exact: true }),
+  ).toBeVisible();
+  const receipt = inspector
+    .getByRole('listitem')
+    .filter({ has: page.getByText('received · msg-1', { exact: true }) });
+  await receipt.getByText('Signature verified', { exact: true }).click();
+  await expect(receipt.getByText(alice.id, { exact: true })).toBeVisible();
+  await expect(
+    receipt.getByText(alice.signing_fingerprint!, { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Event timeline', exact: true }),
   ).toBeVisible();
@@ -342,6 +361,9 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(
     ledger.getByText('message_decrypted', { exact: true }),
   ).toBeVisible();
+  for (const operation of ['message_signed', 'sender_signature_verified']) {
+    await expect(ledger.getByText(operation, { exact: true })).toBeVisible();
+  }
   for (const role of ['sender', 'receiver'] as const) {
     const device = final.devices.find((p) => p.role === role)!;
     const panel = page.getByRole('complementary', {
@@ -373,6 +395,22 @@ test('completes the live thirty-transmission scenario with edited text, polling,
         row.simulation_time_ms + ' ms',
       ]),
     );
+    const incoming = sentReceived.filter((row) => row.state === 'received');
+    await expect(
+      messages.getByText('Signature verified', { exact: true }),
+    ).toHaveCount(incoming.length);
+    const first = incoming[0];
+    const bubble = messages.locator(
+      '[data-message-id="' + first.message_id + '"]',
+    );
+    await bubble.getByText('Signature verified', { exact: true }).click();
+    await expect(
+      bubble.getByText(first.verified_signer_id!, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      bubble.getByText(first.signing_fingerprint!, { exact: true }),
+    ).toBeVisible();
+    await bubble.getByText('Signature verified', { exact: true }).click();
     const card = graph.locator('[data-node-id="' + device.id + '"]');
     await expect(card).not.toContainText(edited);
     await expect(card.locator('[data-last-sent]')).toHaveAttribute(
