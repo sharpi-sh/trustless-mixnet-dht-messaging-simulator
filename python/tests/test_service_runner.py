@@ -139,3 +139,33 @@ def test_zero_pacing_yields_between_steps_and_can_be_changed_live(monkeypatch):
             await service.close()
 
     asyncio.run(scenario())
+
+
+def test_fast_stream_combines_published_changes_and_flushes_immediately_on_pause():
+    async def scenario():
+        service = Service()
+        lab = service.create(Config(random_seed=42, step_delay_ms=1))
+        lab.lifecycle("run")
+        session = service._sessions[lab.id]
+        cursor = len(lab.events)
+        # Drive actual scheduler steps without a competing background runner.
+        async with session.changed:
+            for _ in range(8):
+                lab.advance()
+            session.publish()
+        assert len(lab.events) > cursor + 1
+        waiting = asyncio.create_task(
+            service.wait_stream(lab.id, 0, cursor, asyncio.get_running_loop().time())
+        )
+        await asyncio.sleep(0)
+        assert not waiting.done()
+        await service.command(lab, command(lab, "pause", "pause"))
+        await asyncio.wait_for(waiting, 0.1)
+        from app.stream import delta
+
+        update = delta(lab, 0, cursor)
+        assert update.status == "paused"
+        assert [e.sequence for e in update.events] == list(range(cursor + 1, update.sequence + 1))
+        await service.close()
+
+    asyncio.run(scenario())
