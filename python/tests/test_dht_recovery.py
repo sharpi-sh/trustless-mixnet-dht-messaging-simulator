@@ -5,7 +5,6 @@ from app.dht_runtime import DHTRequest, DHTResult, Join, Maintenance
 from app.engine import Engine
 from app.kademlia import DAY
 from app.profiles import profiles
-from app.steps import Action
 from app.storage_simulation import StorageSimulation
 
 
