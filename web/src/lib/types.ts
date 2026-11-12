@@ -11,6 +11,7 @@ export interface Outage {
   duration_ms: number;
 }
 export interface Config {
+  participant_channels?: Record<string, Channel>;
   sender_channel?: Channel;
   recipient_channel?: Channel;
   sender_count: number;
@@ -256,6 +257,7 @@ export type Connection =
   | 'reconnecting'
   | 'error';
 export interface ClientState {
+  participantLabels: Record<string, string>;
   firstDeparturePlayback: boolean;
   connection: Connection;
   http: string;

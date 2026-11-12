@@ -20,8 +20,16 @@
   let openSetup = false;
   let uiError = $state('');
   let lab = $derived($store.snapshot);
-  let senderChannel = $derived(lab?.config.sender_channel ?? 'tor');
-  let recipientChannel = $derived(lab?.config.recipient_channel ?? 'tor');
+  let sendChannels = $derived([
+    ...new Set(
+      lab?.devices
+        .filter((d) => d.role === 'sender')
+        .map((d) => d.channel ?? 'tor'),
+    ),
+  ]);
+  let allChannels = $derived([
+    ...new Set(lab?.devices.map((d) => d.channel ?? 'tor')),
+  ]);
   let pending = $derived($store.pending > 0);
   let connected = $derived($store.connection === 'connected');
 
@@ -134,12 +142,15 @@
       {$store.error || uiError}
     </p>{/if}
 
-  {#if connected && $store.config && (!$store.config.sender_channel || !$store.config.recipient_channel || !$store.firstDeparturePlayback)}
+  {#if connected && $store.config && (!$store.config.participant_channels || !$store.firstDeparturePlayback)}
     <div class="startup-hint">
       <p>
         Connected to {$store.http}.
         {#if !$store.config.sender_channel || !$store.config.recipient_channel}
           This Python backend only supports Tor for participant connections.
+        {:else if !$store.config.participant_channels}
+          This Python backend applies a single connection method to each role.
+          Restart it to choose a channel for each participant.
         {/if}
         {#if !$store.firstDeparturePlayback}
           This version can show DHT startup traffic before the first message.
@@ -253,6 +264,7 @@ npm run dev</code
   {:else if view === 'configuration' && $store.config}
     <Configuration
       defaults={$store.config}
+      participantLabels={$store.participantLabels}
       {create}
       busy={pending || !connected}
     />
@@ -329,11 +341,13 @@ npm run dev</code
       </div>
       {#if lab.first_message_hop_sequence === null}
         <p id="first-message-help" class="startup-hint">
-          Run follows the message from its first hop to {senderChannel ===
-          'direct'
-            ? 'the provider'
-            : channelNames[senderChannel]}. Choose Step to first message hop to
-          pause at departure.
+          Run follows the message from its first hop to {sendChannels.length ===
+          1
+            ? sendChannels[0] === 'direct'
+              ? 'the provider'
+              : channelNames[sendChannels[0]]
+            : 'the sending device’s selected connection'}. Choose Step to first
+          message hop to pause at departure.
           {#if lab.status === 'paused' && $store.events.at(-1)?.event_type === 'first_message_hop_step_finished'}
             The step limit was reached. Use the control again to continue.
           {/if}
@@ -372,12 +386,7 @@ npm run dev</code
   <footer>
     <span>Local simulation</span><span
       >{lab
-        ? [
-            ...new Set([
-              channelNames[senderChannel],
-              channelNames[recipientChannel],
-            ]),
-          ].join(' / ')
+        ? allChannels.map((kind) => channelNames[kind]).join(' / ')
         : 'Participant connections'} · Loopix 2017 · Kademlia 2002 · Replicated chunk
       storage</span
     >

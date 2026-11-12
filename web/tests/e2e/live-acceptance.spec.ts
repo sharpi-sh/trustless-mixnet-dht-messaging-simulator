@@ -451,13 +451,17 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     name: 'Recipient conversations',
     exact: true,
   });
-  await recipient
-    .getByRole('combobox', { name: 'Recipient thread' })
-    .selectOption('conv-2');
+  const secondSender = final.devices.find((d) => d.id === 'sender-2')!;
+  const contact = recipient.getByRole('button', {
+    name: secondSender.label + ', 5 messages received',
+    exact: true,
+  });
+  await contact.press('Enter');
+  await expect(contact).toHaveAttribute('aria-pressed', 'true');
   await expect(recipient.locator('li')).toHaveCount(10);
-  await recipient
-    .getByRole('combobox', { name: 'Recipient thread' })
-    .selectOption('');
+  await contact.click();
+  await expect(contact).toHaveAttribute('aria-pressed', 'false');
+  await expect(recipient.locator('li')).toHaveCount(30);
   expect(errors).toEqual([]);
   if (process.env.SIM_GRAPH_EVIDENCE) {
     await mkdir(process.env.SIM_GRAPH_EVIDENCE, { recursive: true });

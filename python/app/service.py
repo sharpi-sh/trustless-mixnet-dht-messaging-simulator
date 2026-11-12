@@ -174,17 +174,26 @@ class Service:
                                 departure_sequence=lab.first_message_hop_sequence,
                                 limit=FIRST_HOP_STEP_LIMIT,
                             )
-                    frame = _message_frame(lab.events[cursor:], lab.first_message_hop_sequence)
+                    events = lab.events[cursor:]
+                    frame = _message_frame(events, lab.first_message_hop_sequence)
+                    poll_frame = any(
+                        e.event_type.startswith("poll_")
+                        or (
+                            e.event_type.startswith("path_transit_")
+                            and e.payload["token"].startswith("poll-")
+                        )
+                        for e in events
+                    )
                     background_steps = 0 if frame else background_steps + 1
-                    # Bootstrap, cover and empty polls keep their logical order. Before
-                    # the first payload they do not create an animation frame or a
-                    # wall-clock delay. Manual controls and failures still publish.
+                    # Publish timer-driven polls even before the first payload, without
+                    # inserting a playback delay ahead of the first message departure.
                     after_departure = lab.first_message_hop_sequence is not None
                     dwell = frame or (after_departure and background_steps >= IDLE_PLAYBACK_STEPS)
                     if dwell:
                         background_steps = 0
                     if (
                         dwell
+                        or poll_frame
                         or (
                             after_departure
                             and (not lab.step_delay_ms or background_steps % STREAM_BATCH_STEPS == 0)

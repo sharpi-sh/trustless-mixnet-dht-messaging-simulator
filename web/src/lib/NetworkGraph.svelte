@@ -173,7 +173,8 @@
               : '';
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active).filter(
-          ([id]) => showAll || traces.legs.has(id),
+          ([id, t]) =>
+            showAll || traces.legs.has(id) || t.token.startsWith('poll-'),
         );
         const planned =
             showAll && !pinned && ['running', 'paused'].includes(lab.status)
@@ -285,6 +286,7 @@
             id,
             t,
             leg,
+            poll: t.token.startsWith('poll-'),
             colour: track?.colour,
             retry: traces.retries.has(t.token),
             curve: track?.curve ?? e.tracks.get(t.source + '/' + t.lane)!.curve,
@@ -313,7 +315,10 @@
       // Playback can batch a background action at this exact logical timestamp.
       // A payload has its own reported arrival time, independent of the next action.
       // The moving marker stays inside the link until Python retires the transit.
-      const end = leg ? t.end_ms : Math.min(t.end_ms, next ?? now);
+      const end =
+        leg || t.token.startsWith('poll-')
+          ? t.end_ms
+          : Math.min(t.end_ms, next ?? now);
       return { id, start, end: Math.max(start, end) };
     });
     function positions(fraction: number) {
@@ -406,8 +411,21 @@
         {lab.topology.nodes.length} nodes <span>·</span>
         {lab.topology.paths.length} configured paths <span>·</span>
         {transits.length}
-        {showAll ? 'in transit' : 'message transits'}
+        {showAll ? 'in transit' : 'message and poll transits'}
       </p>
+      {#if receiver}
+        <p data-poll-owner={receiver.id}>
+          {receiver.label} · {receiver.polling_enabled
+            ? 'Poll every ' + lab.config.polling_interval_ms + ' ms'
+            : 'Polling disabled'}
+          {#if traces.pollStarts.has(receiver.id)}
+            · Last request {traces.pollStarts.get(receiver.id)} ms
+          {/if}
+          {#if traces.pollResults.has(receiver.id)}
+            · {traces.pollResults.get(receiver.id)}
+          {/if}
+        </p>
+      {/if}
     </div>
     <div class="tools">
       <label
@@ -754,7 +772,8 @@
           )}
           <g
             class="marker"
-            class:background={!m.leg}
+            class:background={!m.leg && !m.poll}
+            data-poll-id={m.poll ? m.t.token : undefined}
             data-message-id={m.leg?.messageId}
             data-transit-id={m.id}
             data-retry={m.retry}
@@ -765,13 +784,19 @@
             pointer-events="none"
           >
             <title
-              >{m.t.token} · {m.t.source} → {m.t.target} · {m.t.start_ms}–{m.t
-                .end_ms} ms</title
+              >{m.poll ? 'Mailbox poll ' + m.t.token : m.t.token} · {m.t.source} →
+              {m.t.target} · {m.t.start_ms}–{m.t.end_ms} ms</title
             >
             <circle
-              r={m.leg ? Math.min(17, 7.5 / zoom) : 3}
+              r={m.leg
+                ? Math.min(17, 7.5 / zoom)
+                : m.poll
+                  ? Math.min(10, 3.5 / zoom)
+                  : 3}
               fill={m.leg ? 'white' : m.retry ? '#fff0dd' : '#d6f4df'}
-              stroke={m.retry ? '#c0580a' : (m.colour ?? '#77867c')}
+              stroke={m.retry
+                ? '#c0580a'
+                : (m.colour ?? (m.poll ? '#355679' : '#77867c'))}
               stroke-width={m.leg ? 2 : 1}
             /><circle
               r={m.leg ? Math.min(10, 4.4 / zoom) : 1.2}
@@ -1124,7 +1149,7 @@
   }
   .edge .stroke {
     stroke: #a6b4ab;
-    stroke-width: 1.1;
+    stroke-width: 0.65;
     stroke-dasharray: 2 3;
     opacity: 0.55;
     pointer-events: none;
@@ -1141,13 +1166,13 @@
   .edge.planned .stroke,
   .edge.selected .stroke {
     stroke: #4f72c0;
-    stroke-width: 2;
+    stroke-width: 1;
     stroke-dasharray: none;
     opacity: 0.92;
   }
   .edge.active .stroke {
     stroke: #388653;
-    stroke-width: 2.2;
+    stroke-width: 1.1;
     stroke-dasharray: none;
     opacity: 1;
   }
@@ -1156,7 +1181,7 @@
     stroke: #b9493a;
     stroke-dasharray: 6 3;
     opacity: 0.95;
-    stroke-width: 1.8;
+    stroke-width: 0.9;
   }
   .edge.unavailable .stroke {
     stroke: #b08774;
@@ -1165,13 +1190,13 @@
   .edge:hover .stroke,
   .edge:focus-visible .stroke,
   .edge[aria-pressed='true'] .stroke {
-    stroke-width: 3;
+    stroke-width: 1.5;
     opacity: 1;
   }
   .pinned-route {
     fill: none;
     stroke: #3e54c0;
-    stroke-width: 3;
+    stroke-width: 1.5;
     stroke-dasharray: 7 4;
   }
   .route-node {
@@ -1206,7 +1231,7 @@
   }
   .edge.substrate.active .stroke {
     stroke: #728d7f;
-    stroke-width: 1.3;
+    stroke-width: 0.75;
     opacity: 0.36;
   }
   .marker-hit {
@@ -1230,7 +1255,7 @@
   }
   .message-halo {
     stroke: #fff;
-    stroke-width: 5.2;
+    stroke-width: 2.4;
     pointer-events: none;
   }
   .message-track path,
@@ -1244,7 +1269,7 @@
   }
   .message-line {
     stroke: var(--message-colour);
-    stroke-width: 3.4;
+    stroke-width: 1.25;
     pointer-events: none;
   }
   .message-track.failed .message-line {
@@ -1253,7 +1278,7 @@
   .message-track:hover .message-line,
   .message-track:focus-visible .message-line,
   .message-track.chosen .message-line {
-    stroke-width: 4;
+    stroke-width: 1.75;
   }
   .history-dot {
     fill: var(--message-colour);

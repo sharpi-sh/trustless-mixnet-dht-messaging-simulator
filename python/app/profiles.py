@@ -17,7 +17,7 @@ class Profile(Model):
 
 def _channel_profiles(c: Config, all_channels: bool) -> list[Profile]:
     selected = (
-        {"tor", "shadowsocks", "direct"} if all_channels else {c.sender_channel, c.recipient_channel}
+        {"tor", "shadowsocks", "direct"} if all_channels else set(c.channels_by_device().values())
     )
     channels = []
     if "tor" in selected:

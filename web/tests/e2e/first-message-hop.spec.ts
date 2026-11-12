@@ -40,7 +40,16 @@ test('first-message stepping pauses at a real device departure and becomes avail
   const track = page.getByRole('button', {
     name: /msg-1 · sender-1 to tor-sender-1 ·/,
   });
+  await expect(track.locator('.message-line')).toHaveCSS(
+    'stroke-width',
+    '1.25px',
+  );
+  await expect(track.locator('.message-hit')).toHaveCSS('stroke-width', '13px');
   await track.press('Enter');
+  await expect(track.locator('.message-line')).toHaveCSS(
+    'stroke-width',
+    '1.75px',
+  );
   const leg = page.locator(
     '[data-selected-leg="' + departure.payload.transit_id + '"]',
   );
@@ -55,4 +64,34 @@ test('first-message stepping pauses at a real device departure and becomes avail
   await expect(seek).toHaveCount(0);
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(seek).toBeEnabled();
+});
+
+test('Bob records empty timed polls before Alice sends any packets', async ({
+  page,
+  backend,
+}) => {
+  await connect(page, backend.url);
+  await page.getByLabel('Random seed', { exact: true }).fill('422');
+  await page.getByText('Advanced settings', { exact: true }).click();
+  await page.getByLabel('Polling interval (ms)', { exact: true }).fill('1000');
+  const id = await createSimulation(page, backend);
+  const status = page.locator('[data-poll-owner="receiver-1"]');
+  await expect(status).toContainText('Poll every 1000 ms');
+  await page
+    .getByRole('button', { name: 'Step to first message hop', exact: true })
+    .click();
+  await expect(status).toContainText(/Last request \d+ ms · Empty at \d+ ms/);
+  await expect
+    .poll(async () => (await backend.state(id)).status)
+    .toBe('paused');
+  const snapshot = await backend.state(id);
+  const emptyAt = Number(
+    (await status.innerText()).match(/Empty at (\d+) ms/)![1],
+  );
+  expect(emptyAt).toBeLessThanOrEqual(snapshot.simulation_time_ms);
+  expect(
+    snapshot.devices
+      .find((d) => d.id === 'receiver-1')
+      ?.logs.filter((l) => l.state === 'received'),
+  ).toEqual([]);
 });

@@ -1,4 +1,4 @@
-import type { DeviceLog } from './types';
+import type { DeviceLog, Message } from './types';
 
 export function logicalStamp(ms: number) {
   const whole = Math.floor(ms / 1000);
@@ -29,6 +29,28 @@ export function chatRows(logs: DeviceLog[]) {
       row.state === 'replied' ||
       row.state === 'received',
   );
+}
+
+export function inboxContacts(
+  logs: DeviceLog[],
+  messages: Message[],
+  owner?: string,
+) {
+  const peers = new Map<string, string>();
+  for (const message of messages) {
+    if (message.target_id === owner)
+      peers.set(message.conversation_id, message.sender_id);
+    else if (message.sender_id === owner)
+      peers.set(message.conversation_id, message.target_id);
+  }
+
+  const received = new Map<string, number>();
+  for (const row of logs) {
+    const peer = peers.get(row.conversation_id);
+    if (row.state === 'received' && peer)
+      received.set(peer, (received.get(peer) ?? 0) + 1);
+  }
+  return { peers, received };
 }
 
 export function lastActivity(logs: DeviceLog[]) {

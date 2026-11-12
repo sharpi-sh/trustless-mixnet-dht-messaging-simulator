@@ -1,13 +1,14 @@
 <script lang="ts">
   import { channelNames } from './channels';
   import { untrack } from 'svelte';
-  import type { Config } from './types';
+  import type { Channel, Config } from './types';
   import {
     configurationError,
     conversationCount,
     loopixFields,
     outageFields,
     pollingFields,
+    participantIds,
     prepareConfig,
     storageFields,
     transportFields,
@@ -16,10 +17,12 @@
 
   let {
     defaults,
+    participantLabels = {},
     create,
     busy,
   }: {
     defaults: Config;
+    participantLabels?: Record<string, string>;
     create: (cfg: Config) => Promise<unknown>;
     busy: boolean;
   } = $props();
@@ -30,12 +33,8 @@
   ] as const;
   let submitting = $state(false);
   let error = $state('');
-  let receivers = $derived(
-    Array.from(
-      { length: Math.max(0, Math.min(10, cfg.receiver_count || 0)) },
-      (_, i) => `receiver-${i + 1}`,
-    ),
-  );
+  let receivers = $derived(participantIds('receiver', cfg.receiver_count));
+  let senders = $derived(participantIds('sender', cfg.sender_count));
   let conversations = $derived(conversationCount(cfg));
   let transmissions = $derived(conversations * cfg.exchanges * 2);
 
@@ -105,18 +104,43 @@
             bind:value={cfg.receiver_count}
           /></label
         >
-        {#each channelFields as [key, label] (key)}
-          <label
-            >{label}
-            {#if cfg[key]}
-              <select aria-label={label} bind:value={cfg[key]}>
-                {#each Object.entries(channelNames) as [value, name] (value)}<option
-                    {value}>{name}</option
-                  >{/each}
+        {#if cfg.participant_channels}
+          {#each [...senders, ...receivers] as id (id)}
+            {@const fallback = id.startsWith('sender-')
+              ? cfg.sender_channel
+              : cfg.recipient_channel}
+            <label>
+              {participantLabels[id] || id} channel
+              <select
+                aria-label={`${participantLabels[id] || id} channel`}
+                value={cfg.participant_channels[id] ?? fallback ?? 'tor'}
+                onchange={(event) => {
+                  cfg.participant_channels = {
+                    ...cfg.participant_channels,
+                    [id]: event.currentTarget.value as Channel,
+                  };
+                }}
+              >
+                {#each Object.entries(channelNames) as [value, name] (value)}
+                  <option {value}>{name}</option>
+                {/each}
               </select>
-            {:else}<span>Tor only</span>{/if}
-          </label>
-        {/each}
+            </label>
+          {/each}
+        {:else}
+          {#each channelFields as [key, label] (key)}
+            <label
+              >{label}
+              {#if cfg[key]}
+                <select aria-label={label} bind:value={cfg[key]}>
+                  {#each Object.entries(channelNames) as [value, name] (value)}<option
+                      {value}>{name}</option
+                    >{/each}
+                </select>
+              {:else}<span>Tor only</span>{/if}
+            </label>
+          {/each}
+        {/if}
         <label
           >{cfg.randomise_count ? 'Minimum mix nodes' : 'Mix nodes'}<input
             type="number"

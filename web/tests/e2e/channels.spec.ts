@@ -46,11 +46,11 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
   await page.setViewportSize({ width: 1500, height: 960 });
   await connect(page, backend.url);
   const sender = page.getByRole('combobox', {
-    name: 'Sender channel',
+    name: 'Alice channel',
     exact: true,
   });
   const recipient = page.getByRole('combobox', {
-    name: 'Recipient channel',
+    name: 'Bob channel',
     exact: true,
   });
   await expect(sender).toHaveValue('tor');
@@ -62,8 +62,7 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
   const id = await createSimulation(page, backend);
   const initial = await backend.state(id);
   expect(initial.config).toMatchObject({
-    sender_channel: 'shadowsocks',
-    recipient_channel: 'direct',
+    participant_channels: { 'sender-1': 'shadowsocks', 'receiver-1': 'direct' },
   });
   const node = (id: string) => initial.topology.nodes.find((n) => n.id === id)!;
   const alice = node('sender-1'),
@@ -185,5 +184,42 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
           ),
         });
     }
+  }
+});
+
+test('assigns three different channels to three senders in the same simulation', async ({
+  page,
+  backend,
+}) => {
+  await connect(page, backend.url);
+  await page.getByLabel('Senders', { exact: true }).fill('3');
+  await page
+    .getByLabel('Carol channel', { exact: true })
+    .selectOption('shadowsocks');
+  await page
+    .getByLabel('David channel', { exact: true })
+    .selectOption('direct');
+  await expect(page.getByLabel('Alice channel', { exact: true })).toHaveValue(
+    'tor',
+  );
+  const id = await createSimulation(page, backend);
+  const state = await backend.state(id);
+  for (const [owner, channel] of [
+    ['sender-1', 'tor'],
+    ['sender-2', 'shadowsocks'],
+    ['sender-3', 'direct'],
+    ['receiver-1', 'tor'],
+  ]) {
+    const endpoint = `${channel}-${owner}`;
+    expect(
+      state.devices.find((device) => device.id === owner)?.channel_id,
+    ).toBe(endpoint);
+    expect(
+      state.topology.paths.some(
+        (path) =>
+          [path.source_id, path.target_id].includes(owner) &&
+          [path.source_id, path.target_id].includes(endpoint),
+      ),
+    ).toBe(true);
   }
 });

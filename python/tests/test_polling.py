@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 from app.config import Config
 from app.engine import Engine, Intervention
 from app.polling import CELL_BYTES, MailboxItem, PollRuntime
@@ -57,7 +59,7 @@ def test_fixed_width_empty_loop_and_payload_polls_follow_actual_tor_paths():
     assert lab.clients.people[uid].tor.entry_count == lab.clients.people[uid].tor.exit_count == 4
 
 
-def test_return_path_failure_restores_fifo_and_retries_next_clock_without_overlapping():
+def test_return_path_failure_restores_fifo_and_retries_next_clock():
     lab = PollLab(base_transit_delay_ms=40)
     uid = "receiver-1"
     a, b, c = (x * 20 for x in [b"a", b"b", b"c"])
@@ -86,7 +88,7 @@ def test_disabled_midflight_restores_reserved_cells_and_offline_client_suppresse
     lab.intervene(Intervention(command="polling", target=uid, token="disable", enabled=False))
     for _ in lab.drain(18):
         pass
-    assert not lab.items and uid not in lab.polls.active and lab.inboxes[uid].messages == [handle]
+    assert not lab.items and not lab.polls.active and lab.inboxes[uid].messages == [handle]
     lab.change_node(uid, False, "test")
     lab.intervene(Intervention(command="polling", target=uid, token="enable", enabled=True))
     before = sum(e.event_type == "poll_started" for e in lab.events)
@@ -96,3 +98,37 @@ def test_disabled_midflight_restores_reserved_cells_and_offline_client_suppresse
     lab.change_node(uid, True, "test")
     lab.until("poll_empty")
     assert [item.handle for item in lab.items] == [handle]
+
+
+def test_slow_padded_responses_can_overlap_multiple_fixed_ticks_without_duplicate_delivery():
+    lab = PollLab(base_transit_delay_ms=90)
+    uid = "receiver-1"
+    lab.start()
+    lab.until("poll_started", 3)
+    assert len(lab.polls.active) == 3
+    assert not any(e.event_type == "poll_empty" for e in lab.events)
+    handles = [bytes([i]) * 20 for i in range(1, 6)]
+    lab.inboxes[uid].messages.extend(handles)
+    for _ in lab.drain(500):
+        if len(lab.items) == len(handles):
+            break
+    assert [item.handle for item in lab.items] == handles
+    ticks = [e.simulation_time_ms for e in lab.events if e.event_type == "poll_started"]
+    assert all(b - a == 100 for a, b in pairwise(ticks))
+    assert any(e.event_type == "poll_empty" for e in lab.events)
+
+
+def test_disabling_several_outstanding_pulls_restores_all_reserved_handles_in_provider_order():
+    lab = PollLab(base_transit_delay_ms=90)
+    uid = "receiver-1"
+    handles = [bytes([i]) * 20 for i in range(1, 6)]
+    lab.inboxes[uid].messages.extend(handles)
+    lab.start()
+    lab.until("poll_response_prepared", 2)
+    assert lab.inboxes[uid].messages == handles[4:]
+    lab.intervene(Intervention(command="polling", target=uid, token="disable", enabled=False))
+    lab.polls.cancel(uid)
+    for _ in lab.drain(35):
+        pass
+    assert not lab.polls.active and not lab.items
+    assert lab.inboxes[uid].messages == handles

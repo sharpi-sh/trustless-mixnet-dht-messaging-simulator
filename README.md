@@ -160,7 +160,7 @@ cd web
 npm run dev
 ```
 
-Open the local URL printed by Vite, enter the backend port or URL, test the connection, configure and create the simulation, then press **Run**. Connecting does not start a simulation. If the connected server reports Tor-only access or older playback timing, stop it in its terminal and run `.venv/bin/python python/main.py --first-port 8000 --last-port 8000` from the repository root. Select sender and recipient channels before creating the new simulation.
+Open the local URL printed by Vite, enter the backend port or URL, test the connection, configure and create the simulation, then press **Run**. Connecting does not start a simulation. If the connected server reports Tor-only access or older playback timing, stop it in its terminal and run `.venv/bin/python python/main.py --first-port 8000 --last-port 8000` from the repository root. Choose Tor, Outline Shadowsocks or direct access separately for each participant before creating the simulation.
 
 ## Documentation
 

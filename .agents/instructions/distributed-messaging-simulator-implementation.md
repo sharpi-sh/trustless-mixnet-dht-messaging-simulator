@@ -336,7 +336,7 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 
 - Bob is an instance of `Person`.
 - Bob owns a connection channel.
-- Bob's client has a polling interval or polling schedule.
+- Bob’s enabled, online client initiates a poll on each fixed timer tick, including while the mailbox is empty and while an earlier request is in flight. The graph shows poll traffic, the last request time and the last result.
 - Receiver polling can be enabled or disabled in configuration and toggled while the simulation is running.
 - When polling is disabled, stored messages remain undiscovered and the receiver cannot generate replies until polling resumes and retrieval completes.
 - Bob initiates a poll through his own connection channel.
@@ -694,7 +694,7 @@ The application assumes authentic directory pins at setup. Display names and par
 
 ## 4.4 Participant connection channels
 
-Each participant owns a connection channel. Sender and recipient roles can independently select Tor (the default), Outline Shadowsocks or a direct request. References elsewhere to participant Tor boundaries describe the default profile. The selected channel applies to message transmission, provider polling, DHT access, vault retrieval and replies originating at that device.
+Each participant owns a connection channel. Each individual sender and recipient can independently select Tor (the default), Outline Shadowsocks or a direct request. The creation API accepts a `participant_channels` map keyed by device ID. Devices without an entry inherit their role default for compatibility. References elsewhere to participant Tor boundaries describe the default profile. The selected channel applies to message transmission, provider polling, DHT access, vault retrieval and replies originating at that device.
 
 - Tor models a single boundary with distinct guard and exit addresses. Circuit construction, relay selection and onion encryption are outside the simulation.
 - Outline Shadowsocks models a proxy with a client-facing address and a server egress address. The proxy sees the device's IP on entry. The next service sees the proxy's IP. The simulation represents address visibility without implementing the Shadowsocks wire protocol.
@@ -1230,7 +1230,7 @@ Main visual area showing:
 - active message markers held at nodes or travelling on paths;
 - offline/recovering states.
 
-Arrange the topology in stable left-to-right stage columns. The baseline sequence is participant device, sender connection channel, Loopix ingress provider, ordered Loopix mix layers, Loopix egress provider, Kademlia/DHT lookup, encrypted storage vault, recipient connection channel and recipient device. The actual Python topology may add or omit columns, but stage order must remain explicit.
+Arrange the topology in stable left-to-right stage columns. The baseline sequence is participant device, sender connection channel, Loopix ingress provider, ordered Loopix mix layers, Loopix egress provider, Kademlia/DHT lookup, encrypted storage vault, recipient connection channel and recipient device. Render message journey lines with a thin visible stroke and a wider invisible pointer target for inspection. The actual Python topology may add or omit columns, but stage order must remain explicit.
 
 Use an upper forward lane for sender-to-recipient traffic. Use a lower reply lane for recipient-to-sender traffic. Reply lines enter from the lower-right and curve back through the same node instances; never render duplicate node cards solely for the reply journey.
 
@@ -1330,7 +1330,7 @@ The delay slider should remain available during execution.
 
 ### H. Participant portraits and conversation logs
 
-Render participants as circular photo endpoints at the edges of their conversation panes. Centre each vertical stack and connect each portrait to its own channel. A green ring identifies the participant selected on each side. Selecting a portrait opens its chat, IP address and latest send and receive times. Keep the device details available in the node inspector.
+Render participants as circular photo endpoints at the edges of their conversation panes. Centre each vertical stack and connect each portrait to its own channel. A green ring identifies the participant selected on each side. Selecting a portrait opens its chat, IP address and latest send and receive times. Keep the device details available in the node inspector. Display incoming contacts as selectable portraits with red badges counting messages received by the selected device. Selecting a contact filters both directions in device-log order.
 
 Log rows use the participant's perspective:
 

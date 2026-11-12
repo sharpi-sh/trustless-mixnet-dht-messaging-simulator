@@ -13,6 +13,7 @@ import type {
 
 const blank = (): ClientState => ({
   connection: 'disconnected',
+  participantLabels: {},
   firstDeparturePlayback: false,
   http: '',
   ws: '',
@@ -41,6 +42,7 @@ type Frame =
   | { type: 'ack' | 'pong'; command_id: string; result?: Reply }
   | { type: 'error'; command_id: string | null; detail: string };
 interface Health {
+  participant_labels?: Record<string, string>;
   first_departure_playback?: boolean;
   status: string;
   service: string;
@@ -266,6 +268,7 @@ export class LabClient {
       if (!this.activeId) this.set({ snapshot: null, events: [] });
       this.set({
         version: health.api_version,
+        participantLabels: health.participant_labels ?? {},
         firstDeparturePlayback: health.first_departure_playback === true,
         config,
       });
