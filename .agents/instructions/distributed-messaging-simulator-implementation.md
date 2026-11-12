@@ -1204,7 +1204,7 @@ Fields/actions:
 ### B. Simulation configuration
 
 Sections:
-1. Network setup includes the sender rows, recipient rows and mix node count in one panel.
+1. Network setup occupies the left half on desktop. Show each sender and recipient with their portrait and channel in this panel, followed by the mix node count. Group the remaining configuration sections in the right half and stack the columns on narrow screens.
 2. Receiver polling controls, including the initial enabled state.
 3. Conversation pairing.
 4. Message/exchange count from 1–10.
@@ -1240,9 +1240,11 @@ The graph must distinguish configured protocol topology from observed traffic. F
 
 Label the access link for the selected channel and identify local interface handoffs. Channel egress connects to the Loopix ingress `ProviderNode`; the provider is the mixnet ingestion point. Do not label a first-layer mix node as the ingestion provider.
 
-Provide direct graph controls for **Block route**, **Restore route**, **Disable polling** and **Enable polling**. Controls dispatch typed commands to Python and show pending, applied or rejected state.
+Place runtime controls in the network topology header. Group node availability with the selected node’s glyph or portrait and show its availability button in red while offline. Provide direct graph controls for **Block route**, **Restore route**, **Disable polling** and **Enable polling**. Controls dispatch typed commands to Python and show pending, applied or rejected state.
 
 ### D. Node inspector
+
+Use one selector for nodes and paths, with participant portraits and node glyphs. Place it above the white information panel in the left half of the desktop workspace. Show event and lineage records in the right half. Stack these panels on narrow screens.
 
 When a node is selected, show:
 - node ID;
