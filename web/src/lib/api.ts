@@ -88,7 +88,7 @@ export function resolveEndpoint(input: string): { http: string; ws: string } {
 async function json<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
-    signal: options?.signal ?? AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -106,51 +106,6 @@ async function json<T>(url: string, options?: RequestInit): Promise<T> {
   }
   return response.json();
 }
-// Python binds the first available IPv4 loopback port in this range by default.
-export async function findUpdatedBackend(currentHttp: string): Promise<string> {
-  for (let first = 8000; first <= 8099; first += 8) {
-    const matches = await Promise.all(
-      Array.from({ length: Math.min(8, 8100 - first) }, async (_, i) => {
-        const endpoint = 'http://127.0.0.1:' + (first + i);
-        if (endpoint === currentHttp) return null;
-        try {
-          const options: RequestInit = {
-            signal: AbortSignal.timeout(800),
-            redirect: 'error',
-            credentials: 'omit',
-          };
-          const health = await json<Health>(endpoint + '/health', options);
-          if (
-            health.service !== 'simulation-backend' ||
-            health.status !== 'ok' ||
-            !health.first_departure_playback
-          )
-            return null;
-          const [config, info] = await Promise.all([
-            json<Config>(endpoint + '/api/config', options),
-            json<{ protocols: { id: string }[] }>(
-              endpoint + '/api/info',
-              options,
-            ),
-          ]);
-          return config.sender_channel &&
-            config.recipient_channel &&
-            info.protocols.some((p) => p.id === 'anonymous-retrieval')
-            ? endpoint
-            : null;
-        } catch {
-          return null;
-        }
-      }),
-    );
-    const match = matches.find((endpoint) => endpoint !== null);
-    if (match) return match;
-  }
-  throw new Error(
-    'No updated simulator answered on local ports 8000–8099. Start Python from the updated checkout and use the endpoint it prints.',
-  );
-}
-
 function replace<T extends { id: string }>(rows: T[], changes: T[]): T[] {
   if (!changes.length) return rows;
   const byId = new Map(changes.map((row) => [row.id, row]));

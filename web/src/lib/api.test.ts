@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { afterEach, expect, test, vi } from 'vitest';
-import { findUpdatedBackend, LabClient, resolveEndpoint } from './api';
+import { LabClient, resolveEndpoint } from './api';
 import type { Config, Delta, LabEvent, Snapshot } from './types';
 
 const event = (n: number): LabEvent => ({
@@ -261,29 +261,4 @@ test('refresh discovers current run, backfills truncated history and reconnects 
   await flush();
   expect(get(client.store).events).toEqual([]);
   client.disconnect();
-});
-
-test('discovery skips the connected server and rejects incomplete or unrelated services', async () => {
-  const probes = vi.fn(async (url: string) => {
-    const { port, pathname } = new URL(url);
-    if (pathname === '/health')
-      return Response.json({
-        status: 'ok',
-        service: port === '8000' ? 'other' : 'simulation-backend',
-        first_departure_playback: port !== '8001',
-      });
-    if (pathname === '/api/config')
-      return Response.json({ sender_channel: 'tor', recipient_channel: 'tor' });
-    return Response.json({
-      protocols: port === '8004' ? [{ id: 'anonymous-retrieval' }] : [],
-    });
-  });
-  vi.stubGlobal('fetch', probes);
-  await expect(findUpdatedBackend('http://127.0.0.1:8002')).resolves.toBe(
-    'http://127.0.0.1:8004',
-  );
-  expect(probes.mock.calls.some(([url]) => url.includes(':8002/'))).toBe(false);
-  expect(probes.mock.calls.some(([url]) => url.includes(':8000/api/'))).toBe(
-    false,
-  );
 });

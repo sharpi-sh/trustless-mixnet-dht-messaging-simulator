@@ -1,9 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { channelNames } from '../lib/channels';
-  import { replaceState } from '$app/navigation';
-  import { page } from '$app/state';
-  import { findUpdatedBackend, LabClient } from '../lib/api';
+  import { LabClient } from '../lib/api';
   import Configuration from '../lib/Configuration.svelte';
   import MessageEditor from '../lib/MessageEditor.svelte';
   import type { Config, CommandType } from '../lib/types';
@@ -20,7 +18,6 @@
   );
   let dirty = $state(false);
   let openSetup = false;
-  let findingBackend = $state(false);
   let uiError = $state('');
   let lab = $derived($store.snapshot);
   let senderChannel = $derived(lab?.config.sender_channel ?? 'tor');
@@ -60,33 +57,6 @@
       localStorage.setItem('lab-endpoint', endpoint);
       view = openSetup || !$store.snapshot ? 'configuration' : 'laboratory';
     });
-  }
-  async function useUpdatedBackend() {
-    if (findingBackend) return;
-    findingBackend = true;
-    try {
-      await act(async () => {
-        const current = $store.http;
-        const updated = await findUpdatedBackend(current);
-        if (!connected || $store.http !== current) return;
-        view = 'connection';
-        endpoint = updated;
-        tested = '';
-        await client.test(updated);
-        tested = updated;
-        await client.connect();
-        localStorage.setItem('lab-endpoint', updated);
-        const url = new URL(location.href);
-        url.searchParams.set('port', new URL(updated).port);
-        url.searchParams.set('setup', '1');
-        replaceState(url, page.state);
-        openSetup = true;
-        dirty = false;
-        view = 'configuration';
-      });
-    } finally {
-      findingBackend = false;
-    }
   }
   async function create(config: Config) {
     await client.create(config);
@@ -175,11 +145,13 @@
           This version can show DHT startup traffic before the first message.
         {/if}
       </p>
-      <button disabled={findingBackend} onclick={useUpdatedBackend}>
-        {findingBackend
-          ? 'Finding an updated backend…'
-          : 'Find and connect to updated backend'}
-      </button>
+      <p>
+        Stop the older Python process, then run this from the updated repository
+        root and reconnect on port 8000.
+      </p>
+      <code
+        >.venv/bin/python python/main.py --first-port 8000 --last-port 8000</code
+      >
     </div>
   {/if}
 
