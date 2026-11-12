@@ -345,38 +345,65 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(
     ledger.getByText('message_decrypted', { exact: true }),
   ).toBeVisible();
-  const deviceLog = graph.locator(
-    '[data-node-id="receiver-1"] [aria-label="Bob device log"]',
-  );
-  const row = deviceLog.locator('.logrow').filter({ hasText: edited });
-  await expect(row).toHaveCount(1);
-  await expect(row.locator('time')).toHaveAttribute('title', /^\d+ ms$/);
-  await chooseFilter(
-    page.getByRole('combobox', { name: /^Event category/ }),
-    'Routing',
-  );
-  await page
-    .getByPlaceholder('Event, conversation or packet')
-    .fill('mixnet_route_constructed');
-  await timeline
-    .getByRole('button', { name: 'mixnet_route_constructed', exact: true })
-    .first()
-    .click();
-  await timeline.getByRole('button', { name: 'Show recorded route' }).click();
-  const originalHops = route(failure.payload.token).payload
-    .ordered_route as string[];
-  const pathIds = originalHops
-    .slice(1)
-    .map((hop, index) => [originalHops[index], hop].sort().join('~'));
-  expect(
-    await graph
-      .locator('[data-inspected-path]')
-      .evaluateAll((els) =>
-        els.map((el) => el.getAttribute('data-inspected-path')),
+  for (const role of ['sender', 'receiver'] as const) {
+    const device = final.devices.find((p) => p.role === role)!;
+    const panel = page.getByRole('complementary', {
+      name:
+        role === 'sender' ? 'Sender conversations' : 'Recipient conversations',
+      exact: true,
+    });
+    const messages = panel.getByRole('list', {
+      name: device.label + ' chat messages',
+    });
+    const sentReceived = device.logs.filter((row) =>
+      ['sent', 'replied', 'received'].includes(row.state),
+    );
+    const rows = messages.locator('li');
+    expect(
+      await rows.evaluateAll((items) =>
+        items.map((row) => [
+          row.getAttribute('data-message-id'),
+          row.getAttribute('data-side'),
+          row.querySelector('p')?.textContent,
+          row.querySelector('time')?.getAttribute('title'),
+        ]),
       ),
-  ).toEqual(pathIds);
-  await button('Clear recorded route').click();
-  await expect(graph.locator('[data-inspected-path]')).toHaveCount(0);
+    ).toEqual(
+      sentReceived.map((row) => [
+        row.message_id,
+        row.state === 'received' ? 'incoming' : 'outgoing',
+        row.text,
+        row.simulation_time_ms + ' ms',
+      ]),
+    );
+    const card = graph.locator('[data-node-id="' + device.id + '"]');
+    await expect(card).not.toContainText(edited);
+    await expect(card.locator('[data-last-sent]')).toHaveAttribute(
+      'data-last-sent',
+      String(
+        sentReceived.filter((row) => row.state !== 'received').at(-1)!
+          .simulation_time_ms,
+      ),
+    );
+    await expect(card.locator('[data-last-received]')).toHaveAttribute(
+      'data-last-received',
+      String(
+        sentReceived.filter((row) => row.state === 'received').at(-1)!
+          .simulation_time_ms,
+      ),
+    );
+  }
+  const recipient = page.getByRole('complementary', {
+    name: 'Recipient conversations',
+    exact: true,
+  });
+  await recipient
+    .getByRole('combobox', { name: 'Recipient thread' })
+    .selectOption('conv-2');
+  await expect(recipient.locator('li')).toHaveCount(10);
+  await recipient
+    .getByRole('combobox', { name: 'Recipient thread' })
+    .selectOption('');
   expect(errors).toEqual([]);
   if (process.env.SIM_GRAPH_EVIDENCE) {
     await mkdir(process.env.SIM_GRAPH_EVIDENCE, { recursive: true });

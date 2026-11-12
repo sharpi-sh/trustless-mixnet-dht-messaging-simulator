@@ -13,6 +13,7 @@ import type {
   Direction,
   LabEvent,
   LabNode,
+  Json,
   NodeDetails,
   Path,
 } from './types';
@@ -43,7 +44,7 @@ export interface GraphLayout {
 type Point = { x: number; y: number };
 
 function metrics(node: LabNode, count: number) {
-  if (node.kind === 'person') return { w: 146, h: 122, cols: 1 };
+  if (node.kind === 'person') return { w: 146, h: 88, cols: 1 };
   if (node.kind === 'storage' || node.kind === 'dht')
     return { w: 60, h: 44, cols: count > 6 ? 2 : 1 };
   if (node.kind === 'mix') return { w: 55, h: 44, cols: 1 };
@@ -133,7 +134,12 @@ export interface Curve {
   end: Point;
   d: string;
 }
-export function laneCurve(a: GraphNode, b: GraphNode, lane: Direction): Curve {
+export function laneCurve(
+  a: GraphNode,
+  b: GraphNode,
+  lane: Direction,
+  offset = 0,
+): Curve {
   const sign = lane === 'reply' ? 1 : -1;
   const dx = b.x - a.x;
   let start: Point, end: Point, c1: Point, c2: Point;
@@ -155,6 +161,23 @@ export function laneCurve(a: GraphNode, b: GraphNode, lane: Direction): Curve {
         : Math.min(18, Math.abs(dx) * 0.035);
     c1 = { x: start.x + dir * spread, y: start.y + sign * arc };
     c2 = { x: end.x - dir * spread, y: end.y + sign * arc };
+  }
+  // Parallel message tracks keep distinct ports on the same pair of node cards.
+  const clampPort = (value: number, centre: number, height: number) =>
+    Math.max(
+      centre - height / 2 + 3,
+      Math.min(centre + height / 2 - 3, value + offset),
+    );
+  start.y = clampPort(start.y, a.y, a.h);
+  end.y = clampPort(end.y, b.y, b.h);
+  if (Math.abs(dx) < 15) {
+    c1.x += offset;
+    c2.x += offset;
+    c1.y = start.y;
+    c2.y = end.y;
+  } else {
+    c1.y += offset;
+    c2.y += offset;
   }
   const path = d3path();
   path.moveTo(start.x, start.y);
@@ -281,6 +304,152 @@ export function transitEndpoints(
   return result;
 }
 
+const messagePalette = [
+  '#1954ac',
+  '#ac2c68',
+  '#00775f',
+  '#9c4b03',
+  '#7540a8',
+  '#087186',
+  '#a72e38',
+  '#65760e',
+  '#4b4ca5',
+  '#a34412',
+  '#097085',
+  '#6f497b',
+];
+
+export function messageColour(id: string): string {
+  const suffix = /^msg-(\d+)$/.exec(id);
+  let index = suffix ? Math.max(0, Number(suffix[1]) - 1) : 0;
+  if (!suffix) for (const c of id) index = (31 * index + c.charCodeAt(0)) >>> 0;
+  if (index < messagePalette.length) return messagePalette[index];
+  return `hsl(${((index * 137.508) % 360).toFixed(2)} 66% 37%)`;
+}
+
+export interface MessageLeg {
+  id: string;
+  messageId: string;
+  pathId: string;
+  token: string;
+  lane: Direction;
+  source: string;
+  target: string;
+  startMs: number | null;
+  expectedEndMs: number | null;
+  endMs: number | null;
+  status: 'active' | 'completed' | 'failed';
+  reason: string | null;
+  cargo: Record<string, Json>;
+  event: LabEvent;
+}
+interface MessageTrack {
+  id: string;
+  messageId: string;
+  pathId: string;
+  source: string;
+  target: string;
+  lane: Direction;
+  offset: number;
+  legs: string[];
+}
+
+function messageTrafficHistory() {
+  const legs = new Map<string, MessageLeg>();
+  const tracks = new Map<string, MessageTrack>();
+  const sharedOffsets = new Map<string, Map<string, number>>();
+  function add(event: LabEvent) {
+    const p = event.payload;
+    if (
+      !event.message_id ||
+      !event.source_id ||
+      !event.target_id ||
+      typeof p.transit_id !== 'string' ||
+      typeof p.path_id !== 'string' ||
+      typeof p.token !== 'string'
+    )
+      return;
+    const status =
+      event.event_type === 'path_transit_started'
+        ? 'active'
+        : event.event_type === 'path_transit_completed'
+          ? 'completed'
+          : event.event_type === 'path_transit_failed'
+            ? 'failed'
+            : null;
+    if (!status) return;
+    const lane = p.lane === 'reply' ? 'reply' : 'forward';
+    const existing = legs.get(p.transit_id);
+    if (existing) {
+      if (status !== 'active') {
+        legs.set(existing.id, {
+          ...existing,
+          status,
+          endMs: event.simulation_time_ms,
+          event,
+          reason: typeof p.reason === 'string' ? p.reason : null,
+        });
+      }
+      return;
+    }
+    const leg: MessageLeg = {
+      id: p.transit_id,
+      pathId: p.path_id,
+      token: p.token,
+      messageId: event.message_id,
+      source: event.source_id,
+      target: event.target_id,
+      lane,
+      status,
+      cargo:
+        p.cargo && typeof p.cargo === 'object' && !Array.isArray(p.cargo)
+          ? p.cargo
+          : {},
+      startMs:
+        status === 'active'
+          ? typeof p.start_ms === 'number'
+            ? p.start_ms
+            : event.simulation_time_ms
+          : null,
+      expectedEndMs: typeof p.end_ms === 'number' ? p.end_ms : null,
+      endMs: status === 'active' ? null : event.simulation_time_ms,
+      reason: typeof p.reason === 'string' ? p.reason : null,
+      event,
+    };
+    legs.set(leg.id, leg);
+    const band = leg.pathId + '/' + lane;
+    const id = band + '/' + leg.source + '/' + leg.messageId;
+    let track = tracks.get(id);
+    if (!track) {
+      let offsets = sharedOffsets.get(band);
+      if (!offsets) {
+        offsets = new Map();
+        sharedOffsets.set(band, offsets);
+      }
+      if (!offsets.has(leg.messageId)) {
+        const i = offsets.size;
+        offsets.set(
+          leg.messageId,
+          (i % 2 === 0 ? -1 : 1) * 27 * (1 - Math.exp(-Math.ceil(i / 2) / 4)),
+        );
+      }
+      track = {
+        id,
+        messageId: leg.messageId,
+        pathId: leg.pathId,
+        source: leg.source,
+        target: leg.target,
+        lane,
+        offset: offsets.get(leg.messageId)!,
+        legs: [],
+      };
+      tracks.set(id, track);
+    }
+    track.legs.push(leg.id);
+  }
+  return { add, legs, tracks };
+}
+
 export function makeTraceHistory() {
   type Trace = {
     source: string;
@@ -290,6 +459,7 @@ export function makeTraceHistory() {
     at: number;
   };
   const retries = new Set<string>();
+  let messages = messageTrafficHistory();
   let plannedPacket: string | undefined;
   let epochKey = '',
     last = 0;
@@ -301,6 +471,7 @@ export function makeTraceHistory() {
       last = 0;
       plannedPacket = undefined;
       retries.clear();
+      messages = messageTrafficHistory();
       seen = new Map();
       chosen = new Map();
     }
@@ -334,6 +505,7 @@ export function makeTraceHistory() {
         e.source_id &&
         e.target_id
       ) {
+        messages.add(e);
         seen.set(p.path_id, {
           source: e.source_id,
           target: e.target_id,
@@ -344,6 +516,12 @@ export function makeTraceHistory() {
       }
     }
     last = rows.length;
-    return { seen, chosen, retries };
+    return {
+      seen,
+      chosen,
+      retries,
+      legs: messages.legs,
+      messageTracks: messages.tracks,
+    };
   };
 }
