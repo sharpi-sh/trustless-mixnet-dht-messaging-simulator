@@ -43,55 +43,116 @@ export interface GraphLayout {
 }
 type Point = { x: number; y: number };
 
-function metrics(node: LabNode, count: number) {
-  if (node.kind === 'person') return { w: 146, h: 88, cols: 1 };
-  if (node.kind === 'storage' || node.kind === 'dht')
-    return { w: 60, h: 44, cols: count > 6 ? 2 : 1 };
-  if (node.kind === 'mix') return { w: 55, h: 44, cols: 1 };
-  return { w: 68, h: 48, cols: 1 };
+function metrics(kind: LabNode['kind']) {
+  if (kind === 'person') return { w: 146, h: 88 };
+  if (kind === 'storage' || kind === 'dht') return { w: 60, h: 44 };
+  if (kind === 'mix') return { w: 55, h: 44 };
+  return { w: 68, h: 48 };
 }
 
-export function layoutTopology(nodes: LabNode[], paths: Path[]): GraphLayout {
+export function layoutTopology(
+  nodes: LabNode[],
+  paths: Path[],
+  viewport?: { width: number; height: number },
+): GraphLayout {
   const stages: StageBand[] = [];
   const points: GraphNode[] = [];
   const groups = Array.from(group(nodes, (n) => n.stage_index)).sort(
     ([a], [b]) => a - b,
   );
-  const plans = groups.map(([index, entries]) => {
-    const m = metrics(entries[0], entries.length);
-    const rows = Math.ceil(entries.length / m.cols);
+  const insetX = 10,
+    bandGap = 7,
+    columnGap = 10,
+    rowGap = 18;
+  const top = 56,
+    bottom = 32;
+  function plan(rowLimit: number) {
+    const bands = groups.map(([index, entries]) => {
+      const kind = entries[0].kind;
+      const { w, h } = metrics(kind);
+      const cols =
+        kind === 'storage' || kind === 'dht'
+          ? Math.ceil(entries.length / rowLimit)
+          : 1;
+      const rows = Math.ceil(entries.length / cols);
+      return {
+        index,
+        entries,
+        kind,
+        w,
+        h,
+        cols,
+        rows,
+        width: cols * w + (cols - 1) * columnGap + 2 * insetX,
+        height: rows * h + (rows - 1) * rowGap,
+      };
+    });
     return {
-      index,
-      entries,
-      ...m,
-      rows,
-      extent: rows * m.h + Math.max(0, rows - 1) * 15,
+      bands,
+      width:
+        2 * insetX +
+        bands.reduce((sum, p) => sum + p.width + bandGap, 0) -
+        bandGap,
+      height: top + Math.max(100, ...bands.map((p) => p.height)) + bottom,
     };
-  });
-  const body = Math.max(280, ...plans.map((p) => p.extent));
-  const height = body + 132;
-  let x = 14;
-  for (const p of plans) {
-    const width = p.cols * p.w + (p.cols - 1) * 11 + 28;
-    const kind = p.entries[0].kind;
+  }
+  let chosen = plan(6);
+  let width = chosen.width,
+    height = chosen.height;
+  if (viewport && viewport.width > 0 && viewport.height > 0) {
+    // Try DHT and vault row counts and keep the largest uniform card scale
+    // that fits both dimensions. Stage ordering stays stable on every resize.
+    const score = (p: typeof chosen) =>
+      Math.min(viewport.width / p.width, viewport.height / p.height);
+    let scale = score(chosen);
+    const maxRows = Math.max(
+      1,
+      ...groups
+        .filter(
+          ([, entries]) =>
+            entries[0].kind === 'dht' || entries[0].kind === 'storage',
+        )
+        .map(([, entries]) => entries.length),
+    );
+    for (let rows = 1; rows <= maxRows; rows++) {
+      const candidate = plan(rows);
+      const candidateScale = score(candidate);
+      if (candidateScale > scale) {
+        chosen = candidate;
+        scale = candidateScale;
+      }
+    }
+    width = viewport.width / scale;
+    height = viewport.height / scale;
+  }
+  const body = height - top - bottom;
+  const extraWidth = (width - chosen.width) / Math.max(1, chosen.bands.length);
+  let x = insetX;
+  for (const p of chosen.bands) {
+    const bandWidth = p.width + extraWidth;
     stages.push({
       index: p.index,
       name: p.entries[0].stage,
       x,
-      width,
+      width: bandWidth,
       count: p.entries.length,
-      kind,
+      kind: p.kind,
     });
     p.entries.forEach((n, i) => {
-      const cx = x + 14 + p.w / 2 + (i % p.cols) * (p.w + 11);
+      const cx =
+        x +
+        (bandWidth - p.width) / 2 +
+        insetX +
+        p.w / 2 +
+        (i % p.cols) * (p.w + columnGap);
       const cy =
-        68 +
-        Math.min(70, (body - p.extent) / 2) +
-        p.h / 2 +
-        Math.floor(i / p.cols) * (p.h + 15);
+        top +
+        (p.rows === 1
+          ? body / 2
+          : p.h / 2 + (Math.floor(i / p.cols) * (body - p.h)) / (p.rows - 1));
       points.push({ id: n.id, x: cx, y: cy, cx, cy, w: p.w, h: p.h });
     });
-    x += width + 9;
+    x += bandWidth + bandGap;
   }
   // Column anchors constrain the small link/collision adjustment, even at 64 DHT peers.
   const anchors = new Map(points.map((n) => [n.id, n]));
@@ -124,7 +185,7 @@ export function layoutTopology(nodes: LabNode[], paths: Path[]): GraphLayout {
     n.x = Math.round(Math.max(n.cx - 2, Math.min(n.cx + 2, n.x)));
     n.y = Math.round(Math.max(n.cy - 4, Math.min(n.cy + 4, n.y)));
   });
-  return { width: x + 5, height, nodes: anchors, stages };
+  return { width, height, nodes: anchors, stages };
 }
 
 export interface Curve {

@@ -50,6 +50,44 @@ async function assertGeometry(nodes: Locator, topology: LabNode[]) {
     }
   }
 }
+async function assertFit(viewport: Locator) {
+  await expect
+    .poll(async () =>
+      viewport.evaluate((container) => {
+        const world = container.querySelector('svg')!.getBoundingClientRect();
+        return Math.max(
+          Math.abs(world.width - container.clientWidth),
+          Math.abs(world.height - container.clientHeight),
+        );
+      }),
+    )
+    .toBeLessThan(1);
+  const bounds = await viewport.evaluate((container) => {
+    const viewportBox = container.getBoundingClientRect();
+    const cards = Array.from(
+      container.querySelectorAll('rect[data-card]'),
+      (card) => card.getBoundingClientRect(),
+    );
+    const sample = container.querySelector<SVGRectElement>('rect[data-card]')!;
+    const rendered = sample.getBoundingClientRect();
+    return {
+      horizontalCoverage:
+        (Math.max(...cards.map((c) => c.right)) -
+          Math.min(...cards.map((c) => c.left))) /
+        viewportBox.width,
+      verticalCoverage:
+        (Math.max(...cards.map((c) => c.bottom)) -
+          Math.min(...cards.map((c) => c.top))) /
+        viewportBox.height,
+      ratio: rendered.width / rendered.height,
+      naturalRatio: sample.width.baseVal.value / sample.height.baseVal.value,
+    };
+  });
+  expect(bounds.horizontalCoverage).toBeGreaterThan(0.9);
+  expect(bounds.verticalCoverage).toBeGreaterThan(0.76);
+  expect(bounds.ratio).toBeCloseTo(bounds.naturalRatio, 3);
+}
+
 async function capture(page: Page, name: string) {
   const directory = process.env.SIM_GRAPH_EVIDENCE;
   if (!directory) return;
@@ -97,6 +135,17 @@ for (const count of [10, 20]) {
       const graphViewport = page.getByRole('region', {
         name: 'Pan network diagram',
       });
+      await assertFit(graphViewport);
+      await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+      await expect
+        .poll(async () =>
+          graphViewport.evaluate((v) => v.scrollWidth / v.clientWidth),
+        )
+        .toBeGreaterThan(1.1);
+      await page
+        .getByRole('button', { name: 'Fit graph', exact: true })
+        .click();
+      await assertFit(graphViewport);
       const [left, diagram, right] = await Promise.all([
         sender.boundingBox(),
         graphViewport.boundingBox(),
@@ -121,6 +170,12 @@ for (const count of [10, 20]) {
         .boundingBox();
       expect(maximised!.width).toBeGreaterThanOrEqual(1499);
       expect(maximised!.height).toBeGreaterThanOrEqual(999);
+      await assertFit(graphViewport);
+      await capture(page, 'graph-' + count + '-mixes-fullscreen');
+      await page.setViewportSize({ width: 970, height: 620 });
+      await assertFit(graphViewport);
+      await assertGeometry(nodes, topology);
+      await page.setViewportSize({ width: 1500, height: 1000 });
       await close.click();
       await expect(full).toBeVisible();
       await full.click();

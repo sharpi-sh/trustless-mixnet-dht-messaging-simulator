@@ -44,6 +44,7 @@
     autoFit = $state(true);
   function toggleScreen() {
     expanded = !expanded;
+    fit();
     if (!expanded) screenButton.focus({ preventScroll: true });
   }
   $effect(() => {
@@ -76,7 +77,8 @@
   }
   let zoom = $state(1),
     showAll = $state(false),
-    width = $state(0);
+    width = $state(0),
+    height = $state(0);
   let topologyKey = $derived(
     lab.simulation_id +
       ':' +
@@ -87,8 +89,9 @@
   // The topology IDs drive placement; traffic, coordinates and selected peers are separate concerns.
   let layout = $derived.by(() => {
     void topologyKey;
+    const space = { width, height };
     return untrack(() =>
-      layoutTopology(lab.topology.nodes, lab.topology.paths),
+      layoutTopology(lab.topology.nodes, lab.topology.paths, space),
     );
   });
   let devices = $derived(new Map(lab.devices.map((d) => [d.id, d])));
@@ -348,18 +351,19 @@
   }
   function zoomBy(f: number) {
     autoFit = false;
-    zoom = Math.max(0.2, Math.min(2, Math.round(zoom * f * 100) / 100));
+    const fitted = Math.min(width / layout.width, height / layout.height);
+    zoom = Math.max(
+      Math.min(0.2, fitted / 2),
+      Math.min(Math.max(2, fitted * 3), zoom * f),
+    );
   }
   function fit() {
     autoFit = true;
     viewport.scrollTo(0, 0);
   }
   $effect(() => {
-    if (autoFit && width > 0)
-      zoom = Math.max(
-        0.35,
-        Math.min(expanded ? 1.5 : 1, (width - 3) / layout.width),
-      );
+    if (autoFit && width > 0 && height > 0)
+      zoom = Math.min(width / layout.width, height / layout.height);
   });
   function handleKey(e: KeyboardEvent, run: () => void) {
     const arrows: Record<string, [number, number]> = {
@@ -453,6 +457,7 @@
       class="graph-viewport"
       bind:this={viewport}
       bind:clientWidth={width}
+      bind:clientHeight={height}
       onpointerdown={down}
       onpointermove={move}
       onpointerup={() => (drag = undefined)}
@@ -886,6 +891,7 @@
         13vw,
         262px
       );
+    grid-template-rows: minmax(0, 1fr);
     height: clamp(350px, 57vh, 620px);
     min-height: 0;
   }
@@ -948,9 +954,6 @@
     }
     .diagram-layout > :global(aside:last-child) {
       border-left: 0;
-    }
-    .expanded .diagram-layout {
-      min-height: 360px;
     }
   }
   .graph-head,
@@ -1030,7 +1033,8 @@
     position: relative;
     overflow: auto;
     max-height: none;
-    min-height: 220px;
+    min-width: 0;
+    min-height: 0;
     overscroll-behavior: contain;
     scrollbar-color: #b9c8bf #edf1ed;
     cursor: grab;
@@ -1289,7 +1293,7 @@
   }
   .node-label {
     font:
-      600 10px system-ui,
+      600 12px system-ui,
       sans-serif;
     fill: #33483c;
   }
@@ -1306,7 +1310,7 @@
     fill: #56695c;
   }
   .device-time {
-    font: 9px var(--mono, monospace);
+    font: 10px var(--mono, monospace);
     fill: #344b40;
     text-anchor: end;
     font-variant-numeric: tabular-nums;
