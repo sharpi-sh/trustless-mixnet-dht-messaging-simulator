@@ -18,6 +18,7 @@ from .api_models import Command, DeviceDTO, NodeDetails, Snapshot, TopologyDTO
 from .config import Config, Model
 from .devices import Lineage
 from .events import Event
+from .participants import PARTICIPANT_LABELS
 from .profiles import Profile, profiles
 from .service import Service
 from .stream import delta, snapshot
@@ -54,6 +55,7 @@ async def local_origin(request: Request, call_next):
 
 
 class Health(Model):
+    participant_labels: dict[str, str] = Field(default_factory=lambda: PARTICIPANT_LABELS.copy())
     message_paced_playback: bool = True
     first_departure_playback: bool = True
     status: str = "ok"

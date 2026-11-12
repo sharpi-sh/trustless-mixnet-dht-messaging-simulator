@@ -144,13 +144,28 @@ export function configurationError(cfg: Config): string {
   return '';
 }
 
-export function prepareConfig(cfg: Config): Config {
-  const known = Array.from(
-    { length: cfg.receiver_count },
-    (_, i) => `receiver-${i + 1}`,
+export function participantIds(role: 'sender' | 'receiver', count: number) {
+  return Array.from(
+    { length: Math.min(10, Math.max(0, count || 0)) },
+    (_, i) => `${role}-${i + 1}`,
   );
+}
+
+export function prepareConfig(cfg: Config): Config {
+  const known = participantIds('receiver', cfg.receiver_count);
+  const active = new Set([
+    ...known,
+    ...participantIds('sender', cfg.sender_count),
+  ]);
   return {
     ...cfg,
+    ...(cfg.participant_channels && {
+      participant_channels: Object.fromEntries(
+        Object.entries(cfg.participant_channels).filter(([id]) =>
+          active.has(id),
+        ),
+      ),
+    }),
     random_seed: cfg.random_seed ?? null,
     max_nodes: cfg.randomise_count ? cfg.max_nodes : cfg.min_nodes,
     polling_overrides: Object.fromEntries(

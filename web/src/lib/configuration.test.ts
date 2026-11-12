@@ -136,3 +136,22 @@ test('accepts zero wall-clock pacing while keeping the configured logical delays
     /Playback delay/,
   );
 });
+
+test('only submits channel selections for participants still configured', () => {
+  const cfg: Config = {
+    ...valid(),
+    sender_count: 3,
+    participant_channels: {
+      'sender-2': 'shadowsocks',
+      'sender-3': 'direct',
+      'receiver-1': 'direct',
+    },
+  };
+  expect(prepareConfig(cfg).participant_channels).toEqual(
+    cfg.participant_channels,
+  );
+  expect(
+    prepareConfig({ ...cfg, sender_count: 2 }).participant_channels,
+  ).toEqual({ 'sender-2': 'shadowsocks', 'receiver-1': 'direct' });
+  expect(prepareConfig(valid())).not.toHaveProperty('participant_channels');
+});

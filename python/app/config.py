@@ -22,6 +22,7 @@ class Config(Model):
     receiver_count: int = Field(1, ge=1, le=10)
     sender_channel: ChannelKind = "tor"
     recipient_channel: ChannelKind = "tor"
+    participant_channels: dict[str, ChannelKind] = Field(default_factory=dict)
     min_nodes: int = Field(15, ge=10, le=20)
     max_nodes: int = Field(15, ge=10, le=20)
     randomise_count: bool = False
@@ -63,6 +64,18 @@ class Config(Model):
     ack_timeout_ms: int = Field(1000, ge=1, le=60000)
     step_delay_ms: int = Field(500, ge=0, le=2000)
 
+    def channels_by_device(self) -> dict[str, ChannelKind]:
+        defaults = (
+            ("sender", self.sender_count, self.sender_channel),
+            ("receiver", self.receiver_count, self.recipient_channel),
+        )
+        channels = {}
+        for role, count, default in defaults:
+            for index in range(1, count + 1):
+                device_id = f"{role}-{index}"
+                channels[device_id] = self.participant_channels.get(device_id, default)
+        return channels
+
     @property
     def rpc_timeout_ms(self) -> int:
         max_leg = self.base_transit_delay_ms + self.jitter_max_ms
@@ -70,6 +83,8 @@ class Config(Model):
 
     @model_validator(mode="after")
     def check_ranges(self) -> Self:
+        if self.participant_channels.keys() - self.channels_by_device().keys():
+            raise ValueError("Connection channels must refer to configured participants")
         if self.min_nodes > self.max_nodes or self.jitter_min_ms > self.jitter_max_ms:
             raise ValueError("Node and jitter ranges must be ordered")
         if self.min_outage_ms > self.max_outage_ms:

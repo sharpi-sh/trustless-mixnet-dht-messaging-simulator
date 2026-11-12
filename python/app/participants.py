@@ -59,6 +59,13 @@ _NAMES = {
 }
 
 
+PARTICIPANT_LABELS = {
+    f"{role}-{index}": label
+    for role, labels in _NAMES.items()
+    for index, label in enumerate(labels, start=1)
+}
+
+
 class StagedMessage(Model):
     id: str
     conversation_id: str
@@ -181,12 +188,13 @@ class People:
 
     def _create_role(self, role: Role, count: int, config: Config) -> list[str]:
         ids = []
+        channels = config.channels_by_device()
         for index in range(count):
             person_id = f"{role}-{index + 1}"
             polling = role == "sender" or config.polling_overrides.get(
                 person_id, config.polling_enabled
             )
-            kind = config.sender_channel if role == "sender" else config.recipient_channel
+            kind = channels[person_id]
             tor = DeviceConnection(id=f"{kind}-{person_id}", owner_id=person_id, kind=kind)
             self.people[person_id] = Person(person_id, _NAMES[role][index], role, tor, polling)
             ids.append(person_id)
