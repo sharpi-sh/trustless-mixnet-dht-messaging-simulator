@@ -905,7 +905,12 @@
     flex-direction: column;
     overflow: auto;
   }
+  .expanded .diagram-layout > :global(aside) {
+    display: none;
+  }
   .expanded .diagram-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
     height: auto;

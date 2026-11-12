@@ -114,6 +114,8 @@ for (const count of [10, 20]) {
       });
       await full.click();
       await expect(close).toBeVisible();
+      await expect(sender).toBeHidden();
+      await expect(recipient).toBeHidden();
       const maximised = await page
         .getByRole('region', { name: 'Network topology', exact: true })
         .boundingBox();
@@ -124,6 +126,7 @@ for (const count of [10, 20]) {
       await full.click();
       await page.keyboard.press('Escape');
       await expect(full).toBeFocused();
+      await expect(sender).toBeVisible();
       for (const device of snapshot.devices) {
         await expect(
           graph.locator('[data-node-id="' + device.id + '"]'),
