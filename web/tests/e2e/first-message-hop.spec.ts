@@ -65,3 +65,27 @@ test('first-message stepping pauses at a real device departure and becomes avail
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(seek).toBeEnabled();
 });
+
+test('Bob records empty timed polls before Alice sends any packets', async ({
+  page,
+  backend,
+}) => {
+  await connect(page, backend.url);
+  await page.getByLabel('Random seed', { exact: true }).fill('422');
+  await page.getByText('Advanced settings', { exact: true }).click();
+  await page.getByLabel('Polling interval (ms)', { exact: true }).fill('1000');
+  const id = await createSimulation(page, backend);
+  const status = page.locator('[data-poll-owner="receiver-1"]');
+  await expect(status).toContainText('Poll every 1000 ms');
+  await page
+    .getByRole('button', { name: 'Step to first message hop', exact: true })
+    .click();
+  await expect(status).toContainText(/Last request \d+ ms · Empty at \d+ ms/);
+  const snapshot = await backend.state(id);
+  expect(snapshot.status).toBe('paused');
+  expect(
+    snapshot.devices
+      .find((d) => d.id === 'receiver-1')
+      ?.logs.filter((l) => l.state === 'received'),
+  ).toEqual([]);
+});

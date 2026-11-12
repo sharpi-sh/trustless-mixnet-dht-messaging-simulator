@@ -173,7 +173,8 @@
               : '';
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active).filter(
-          ([id]) => showAll || traces.legs.has(id),
+          ([id, t]) =>
+            showAll || traces.legs.has(id) || t.token.startsWith('poll-'),
         );
         const planned =
             showAll && !pinned && ['running', 'paused'].includes(lab.status)
@@ -285,6 +286,7 @@
             id,
             t,
             leg,
+            poll: t.token.startsWith('poll-'),
             colour: track?.colour,
             retry: traces.retries.has(t.token),
             curve: track?.curve ?? e.tracks.get(t.source + '/' + t.lane)!.curve,
@@ -313,7 +315,10 @@
       // Playback can batch a background action at this exact logical timestamp.
       // A payload has its own reported arrival time, independent of the next action.
       // The moving marker stays inside the link until Python retires the transit.
-      const end = leg ? t.end_ms : Math.min(t.end_ms, next ?? now);
+      const end =
+        leg || t.token.startsWith('poll-')
+          ? t.end_ms
+          : Math.min(t.end_ms, next ?? now);
       return { id, start, end: Math.max(start, end) };
     });
     function positions(fraction: number) {
@@ -406,8 +411,21 @@
         {lab.topology.nodes.length} nodes <span>·</span>
         {lab.topology.paths.length} configured paths <span>·</span>
         {transits.length}
-        {showAll ? 'in transit' : 'message transits'}
+        {showAll ? 'in transit' : 'message and poll transits'}
       </p>
+      {#if receiver}
+        <p data-poll-owner={receiver.id}>
+          {receiver.label} · {receiver.polling_enabled
+            ? 'Poll every ' + lab.config.polling_interval_ms + ' ms'
+            : 'Polling disabled'}
+          {#if traces.pollStarts.has(receiver.id)}
+            · Last request {traces.pollStarts.get(receiver.id)} ms
+          {/if}
+          {#if traces.pollResults.has(receiver.id)}
+            · {traces.pollResults.get(receiver.id)}
+          {/if}
+        </p>
+      {/if}
     </div>
     <div class="tools">
       <label
@@ -754,7 +772,8 @@
           )}
           <g
             class="marker"
-            class:background={!m.leg}
+            class:background={!m.leg && !m.poll}
+            data-poll-id={m.poll ? m.t.token : undefined}
             data-message-id={m.leg?.messageId}
             data-transit-id={m.id}
             data-retry={m.retry}
@@ -765,13 +784,19 @@
             pointer-events="none"
           >
             <title
-              >{m.t.token} · {m.t.source} → {m.t.target} · {m.t.start_ms}–{m.t
-                .end_ms} ms</title
+              >{m.poll ? 'Mailbox poll ' + m.t.token : m.t.token} · {m.t.source} →
+              {m.t.target} · {m.t.start_ms}–{m.t.end_ms} ms</title
             >
             <circle
-              r={m.leg ? Math.min(17, 7.5 / zoom) : 3}
+              r={m.leg
+                ? Math.min(17, 7.5 / zoom)
+                : m.poll
+                  ? Math.min(10, 3.5 / zoom)
+                  : 3}
               fill={m.leg ? 'white' : m.retry ? '#fff0dd' : '#d6f4df'}
-              stroke={m.retry ? '#c0580a' : (m.colour ?? '#77867c')}
+              stroke={m.retry
+                ? '#c0580a'
+                : (m.colour ?? (m.poll ? '#355679' : '#77867c'))}
               stroke-width={m.leg ? 2 : 1}
             /><circle
               r={m.leg ? Math.min(10, 4.4 / zoom) : 1.2}

@@ -601,6 +601,8 @@ export function makeTraceHistory() {
     at: number;
   };
   const retries = new Set<string>();
+  const pollStarts = new Map<string, number>();
+  const pollResults = new Map<string, string>();
   let messages = messageTrafficHistory();
   let plannedPacket: string | undefined;
   let epochKey = '',
@@ -620,6 +622,8 @@ export function makeTraceHistory() {
       firstSequence = first;
       plannedPacket = undefined;
       retries.clear();
+      pollStarts.clear();
+      pollResults.clear();
       messages = messageTrafficHistory();
       seen = new Map();
       seenMessages = new Map();
@@ -638,6 +642,23 @@ export function makeTraceHistory() {
       const e = rows[i],
         p = e.payload;
       const lane = p.lane === 'reply' ? 'reply' : 'forward';
+      if (e.event_type === 'poll_started' && e.source_id)
+        pollStarts.set(e.source_id, e.simulation_time_ms);
+      if (typeof p.person_id === 'string') {
+        const result =
+          e.event_type === 'poll_empty'
+            ? 'Empty'
+            : e.event_type === 'poll_failed'
+              ? 'Failed'
+              : e.event_type === 'poll_message_found'
+                ? `${p.found} found`
+                : null;
+        if (result)
+          pollResults.set(
+            p.person_id,
+            result + ' at ' + e.simulation_time_ms + ' ms',
+          );
+      }
       const route = extractRoute(e);
       if (route?.retry) retries.add(route.packet);
       if (route && e.message_id) {
@@ -680,6 +701,8 @@ export function makeTraceHistory() {
     return {
       seen,
       seenMessages,
+      pollStarts,
+      pollResults,
       chosen,
       retries,
       legs: messages.legs,
