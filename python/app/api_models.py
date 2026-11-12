@@ -143,6 +143,7 @@ class DeviceDTO(Model):
     role: Role
     tor_id: str
     fingerprint: str
+    signing_fingerprint: str
     polling_enabled: bool
     logs: list[DeviceLog]
 
