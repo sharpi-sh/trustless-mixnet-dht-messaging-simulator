@@ -58,8 +58,14 @@ class _Session:
     changed: asyncio.Condition = field(default_factory=asyncio.Condition)
     speed_changed: asyncio.Event = field(default_factory=asyncio.Event)
     runner: asyncio.Task[None] | None = None
+    published_sequence: int = 0
     first_hop_budget: int = 0
     receipts: dict[str, _Receipt] = field(default_factory=dict)
+
+    def publish(self) -> None:
+        # Late subscribers must wait for the same frame boundary as existing ones.
+        self.published_sequence = len(self.lab.events)
+        self.changed.notify_all()
 
 
 class Service:
@@ -74,7 +80,7 @@ class Service:
             raise ValueError("Simulation service is closed")
         lab = Laboratory(config)
         lab.emit("simulation_created", Action(), random_seed=lab.seed)
-        self._sessions[lab.id] = _Session(lab)
+        self._sessions[lab.id] = _Session(lab, published_sequence=len(lab.events))
         self.epochs[lab.id] = 0
         self.current = lab
         return lab
@@ -89,7 +95,7 @@ class Service:
                 lambda: (
                     self._closed
                     or self.epochs[simulation_id] != epoch
-                    or len(session.lab.events) != seq
+                    or session.published_sequence > seq
                 )
             )
 
@@ -152,7 +158,7 @@ class Service:
                         or background_steps % STREAM_BATCH_STEPS == 0
                         or lab.status != "running"
                     ):
-                        session.changed.notify_all()
+                        session.publish()
                 if lab.status != "running":
                     break
                 if not dwell or lab.step_delay_ms == 0 or session.first_hop_budget:
@@ -172,7 +178,7 @@ class Service:
         except Exception as exc:  # noqa: BLE001 - a runner fault must reach subscribed clients
             async with session.changed:
                 self._failed(lab, f"{type(exc).__name__}: {exc}")
-                session.changed.notify_all()
+                session.publish()
         finally:
             if session.runner is asyncio.current_task():
                 session.runner = None
@@ -293,7 +299,7 @@ class Service:
                 session.receipts[cmd.command_id] = _Receipt(request, error=str(exc))
                 raise ValueError(str(exc)) from exc
             finally:
-                session.changed.notify_all()
+                session.publish()
             result = {"status": lab.status}
             session.receipts[cmd.command_id] = _Receipt(request, result=result)
             return result.copy()
@@ -306,6 +312,6 @@ class Service:
                 if session.runner is not None:
                     runners.append(session.runner)
                     self._cancel_runner(session)
-                session.changed.notify_all()
+                session.publish()
         if runners:
             await asyncio.gather(*runners, return_exceptions=True)

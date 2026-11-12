@@ -91,3 +91,21 @@ def test_failed_first_departure_holds_until_the_operator_restores_and_accelerate
             await service.close()
 
     asyncio.run(scenario())
+
+
+def test_stream_waits_for_publication_even_when_background_steps_are_already_queued():
+    async def scenario():
+        service = Service()
+        lab = service.create(Config(random_seed=42))
+        cursor = len(lab.events)
+        lab.lifecycle("run")
+        lab.advance()
+        assert len(lab.events) > cursor
+        waiting = asyncio.create_task(service.wait(lab.id, 0, cursor))
+        await asyncio.sleep(0)
+        assert not waiting.done()
+        await service.command(lab, command(lab, "pause"))
+        await asyncio.wait_for(waiting, 1)
+        await service.close()
+
+    asyncio.run(scenario())
