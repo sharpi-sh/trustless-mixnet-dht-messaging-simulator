@@ -6,13 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "mixnet-laboratory"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.119,<1", "uvicorn[standard]>=0.35,<1", "cryptography>=45,<50", "pydantic>=2.11,<3"]
+dependencies = ["fastapi>=0.119,<1", "uvicorn[standard]>=0.35,<1", "cryptography>=45,<50", "pydantic>=2.11,<3", "pycryptodome==4.4.0", "msgpack==1.2.4"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-cov>=6", "httpx>=0.28,<1", "ruff>=0.11", "mypy>=1.16"]
 
 [tool.setuptools]
-packages = ["app"]
+packages = ["app", "app.sphinx_ref"]
+
+[tool.setuptools.package-data]
+"app.sphinx_ref" = ["COPYING", "COPYING.LESSER", "NOTICE.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -21,6 +24,10 @@ pythonpath = ["."]
 [tool.mypy]
 files = ["app", "main.py"]
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["Crypto.*", "msgpack"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 104
