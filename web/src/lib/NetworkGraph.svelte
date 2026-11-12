@@ -14,6 +14,8 @@
     transitFraction,
     contactIds,
     makeTraceHistory,
+    extractRoute,
+    transitEndpoints,
   } from './graph-layout';
   import GraphGlyph from './GraphGlyph.svelte';
   let {
@@ -21,6 +23,7 @@
     events,
     selectedNode,
     selectedPath,
+    inspectedRoute = null,
     details,
     onNode,
     onPath,
@@ -29,6 +32,7 @@
     events: LabEvent[];
     selectedNode: string;
     selectedPath: string;
+    inspectedRoute?: LabEvent | null;
     details: NodeDetails | null;
     onNode: (id: string) => void;
     onPath: (id: string) => void;
@@ -62,6 +66,17 @@
   );
   const history = makeTraceHistory();
   let traces = $derived(history(lab.simulation_id + ':' + lab.epoch, events));
+  let pinned = $derived(extractRoute(inspectedRoute));
+  let pinnedLegs = $derived(
+    (pinned?.legs ?? []).flatMap((leg, i) => {
+      const a = layout.nodes.get(leg.source),
+        b = layout.nodes.get(leg.target);
+      return a && b
+        ? [{ ...leg, order: i, d: laneCurve(a, b, leg.lane).d }]
+        : [];
+    }),
+  );
+  let pinnedNodes = $derived(new Set(pinned?.nodes));
   let edges = $derived.by(() =>
     lab.topology.paths
       .flatMap((p) => {
@@ -75,9 +90,10 @@
               : '';
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active);
-        const planned = ['running', 'paused'].includes(lab.status)
-            ? traces.chosen.get(p.id)
-            : undefined,
+        const planned =
+            !pinned && ['running', 'paused'].includes(lab.status)
+              ? traces.chosen.get(p.id)
+              : undefined,
           observed = traces.seen.get(p.id);
         const recentFailure =
           observed?.failed &&
@@ -109,6 +125,11 @@
           !recentFailure
         )
           return [];
+        const retryTracks = new Set(
+          active
+            .filter(([, t]) => traces.retries.has(t.token))
+            .map(([, t]) => t.source + '/' + t.lane),
+        );
         const directions = active.length
           ? active.map(([, t]) => t)
           : [
@@ -126,6 +147,7 @@
               source,
               target,
               lane,
+              retry: retryTracks.has(source + '/' + lane),
               curve: laneCurve(
                 layout.nodes.get(source)!,
                 layout.nodes.get(target)!,
@@ -178,8 +200,15 @@
       e.active.map(([id, t]) => ({
         id,
         t,
+        retry: traces.retries.has(t.token),
         curve: e.tracks.get(t.source + '/' + t.lane)!.curve,
       })),
+    ),
+  );
+  let endpoints = $derived(
+    transitEndpoints(
+      transits.map((m) => m.t),
+      traces.retries,
     ),
   );
   let visualTime = $state(0),
@@ -395,6 +424,7 @@
             <path class="hit" d={track.curve.d} />
             <path
               class="stroke"
+              class:retry={track.retry}
               d={track.curve.d}
               data-track-source={track.source}
               data-track-lane={track.lane}
@@ -402,9 +432,21 @@
           {/each}
         </g>
       {/each}
+      {#each pinnedLegs as leg (leg.order)}
+        <path
+          class="pinned-route"
+          class:retry={pinned?.retry}
+          d={leg.d}
+          data-inspected-path={leg.id}
+          data-route-source={leg.source}
+          data-route-target={leg.target}
+          pointer-events="none"
+        />
+      {/each}
       {#each lab.topology.nodes as n (n.id)}
         {@const g = layout.nodes.get(n.id)!}
         {@const device = devices.get(n.id)}
+        {@const activity = endpoints.get(n.id)}
         {@const busy = Object.keys(n.delayed_packets ?? {}).length > 0}
         <g
           transform={'translate(' + g.x + ' ' + g.y + ')'}
@@ -417,6 +459,9 @@
             ', ' +
             (n.online ? 'online' : 'offline')}
           data-node-id={n.id}
+          data-route-member={pinnedNodes.has(n.id)}
+          data-transit-source={activity?.outgoing ?? 0}
+          data-transit-target={activity?.incoming ?? 0}
           data-highlighted={selectedNode === n.id}
           class="graph-node"
           class:selected={selectedNode === n.id}
@@ -431,6 +476,18 @@
               ? 'online'
               : 'offline'}</title
           >
+          {#if pinnedNodes.has(n.id)}
+            <rect
+              class="route-node"
+              class:retry={pinned?.retry}
+              x={-g.w / 2 - 3}
+              y={-g.h / 2 - 3}
+              width={g.w + 6}
+              height={g.h + 6}
+              rx="9"
+              pointer-events="none"
+            />
+          {/if}
           <rect
             data-card=""
             class="card"
@@ -496,6 +553,40 @@
                   : n.label}</text
             >
           {/if}
+          {#if activity}
+            <g
+              class="endpoints"
+              transform={'translate(0 ' + (g.h / 2 + 1) + ')'}
+              pointer-events="none"
+            >
+              <title
+                >{activity.outgoing} outgoing ({activity.outgoingRetries} retries),
+                {activity.incoming} incoming ({activity.incomingRetries} retries)</title
+              >
+              {#if activity.outgoing}
+                <g
+                  class="outgoing"
+                  class:retry={activity.outgoingRetries > 0}
+                  transform="translate(-26,0)"
+                >
+                  <rect width="25" height="12" rx="3" /><text x="12" y="9"
+                    >↑{activity.outgoing}</text
+                  >
+                </g>
+              {/if}
+              {#if activity.incoming}
+                <g
+                  class="incoming"
+                  class:retry={activity.incomingRetries > 0}
+                  transform="translate(1,0)"
+                >
+                  <rect width="25" height="12" rx="3" /><text x="12" y="9"
+                    >↓{activity.incoming}</text
+                  >
+                </g>
+              {/if}
+            </g>
+          {/if}
           <circle
             class="health"
             cx={g.w / 2 - 6}
@@ -513,6 +604,9 @@
         <g
           class="marker"
           data-transit-id={m.id}
+          data-retry={m.retry}
+          data-source={m.t.source}
+          data-target={m.t.target}
           data-lane={m.t.lane}
           transform={'translate(' + pos.x + ' ' + pos.y + ')'}
           pointer-events="none"
@@ -523,10 +617,10 @@
           >
           <circle
             r="6.7"
-            fill="#d6f4df"
-            stroke="#3a8054"
+            fill={m.retry ? '#fff0dd' : '#d6f4df'}
+            stroke={m.retry ? '#a94d0a' : '#3a8054'}
             stroke-width="1.1"
-          /><circle r="2.6" fill="#267246" />
+          /><circle r="2.6" fill={m.retry ? '#ae500a' : '#267246'} />
         </g>
       {/each}
     </svg>
@@ -539,6 +633,8 @@
       ><i class="legend-line held"></i>Held</span
     >
     <span><i class="legend-line failed"></i>Failed / blocked</span>
+    <span><i class="legend-line retry"></i>Retry</span>
+    <span>↑ Outgoing · ↓ Incoming</span>
     <span class="lane">↗ Forward <span>·</span> ↙ Reply</span>
   </div>
   {#if highlight}<p class="selected-transport">
@@ -738,6 +834,37 @@
     stroke-width: 3;
     opacity: 1;
   }
+  .pinned-route {
+    fill: none;
+    stroke: #3e54c0;
+    stroke-width: 3;
+    stroke-dasharray: 7 4;
+  }
+  .route-node {
+    fill: none;
+    stroke: #3e54c0;
+    stroke-width: 2;
+    stroke-dasharray: 4 2;
+  }
+  .edge.active .stroke.retry,
+  .pinned-route.retry,
+  .route-node.retry {
+    stroke: #af520f;
+  }
+  .endpoints text {
+    font: 700 9px var(--mono, monospace);
+    text-anchor: middle;
+    fill: white;
+  }
+  .endpoints .outgoing rect {
+    fill: #246441;
+  }
+  .endpoints .incoming rect {
+    fill: #236b83;
+  }
+  .endpoints .retry rect {
+    fill: #a44b0d;
+  }
   .graph-node {
     cursor: pointer;
     color: #52665a;
@@ -843,6 +970,9 @@
   }
   .legend-line.selected {
     border-top: 2px solid #4f72c0;
+  }
+  .legend-line.retry {
+    border-top: 2px dashed #af520f;
   }
   .legend-line.held {
     border-top: 2px solid #be8a43;

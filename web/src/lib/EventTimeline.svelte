@@ -12,11 +12,13 @@
     events,
     onNode,
     onPath,
+    onRoute,
   }: {
     lab: Snapshot;
     events: LabEvent[];
     onNode: (id: string) => void;
     onPath: (id: string) => void;
+    onRoute: (e: LabEvent) => void;
   } = $props();
   let category = $state<Category>('All events'),
     node = $state(''),
@@ -129,6 +131,9 @@
           'No conversation'}
       </p>
       <div class="record-actions">
+        {#if selected.event_type === 'mixnet_route_constructed'}<button
+            onclick={() => onRoute(selected!)}>Show recorded route</button
+          >{/if}
         {#if selected.source_id}<button
             onclick={() => onNode(selected!.source_id!)}>Inspect source</button
           >{/if}{#if selected.target_id}<button

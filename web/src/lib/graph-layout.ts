@@ -8,7 +8,14 @@ import {
   path as d3path,
   type SimulationNodeDatum,
 } from 'd3';
-import type { Direction, LabEvent, LabNode, NodeDetails, Path } from './types';
+import type {
+  ActiveTransit,
+  Direction,
+  LabEvent,
+  LabNode,
+  NodeDetails,
+  Path,
+} from './types';
 
 export interface GraphNode extends SimulationNodeDatum {
   id: string;
@@ -208,8 +215,73 @@ export function contactIds(
   return ids;
 }
 
+const edgeId = (a: string, b: string) => [a, b].sort().join('~');
+
+export function extractRoute(event?: LabEvent | null) {
+  if (!event || event.event_type !== 'mixnet_route_constructed') return null;
+  const { ordered_route, lane, attempt, packet_id } = event.payload;
+  if (
+    typeof packet_id !== 'string' ||
+    !Array.isArray(ordered_route) ||
+    !ordered_route.every((id): id is string => typeof id === 'string') ||
+    ordered_route.length < 2
+  )
+    return null;
+  const direction: Direction = lane === 'reply' ? 'reply' : 'forward';
+  const legs = ordered_route.slice(1).map((target, i) => ({
+    id: edgeId(ordered_route[i], target),
+    source: ordered_route[i],
+    target,
+    lane: direction,
+  }));
+  return {
+    nodes: ordered_route,
+    legs,
+    retry: typeof attempt === 'number' && attempt > 1,
+    packet: packet_id,
+  };
+}
+
+export function transitEndpoints(
+  transits: ActiveTransit[],
+  retries: ReadonlySet<string>,
+) {
+  const result = new Map<
+    string,
+    {
+      outgoing: number;
+      incoming: number;
+      outgoingRetries: number;
+      incomingRetries: number;
+    }
+  >();
+  function entry(id: string) {
+    let row = result.get(id);
+    if (!row) {
+      row = {
+        outgoing: 0,
+        incoming: 0,
+        outgoingRetries: 0,
+        incomingRetries: 0,
+      };
+      result.set(id, row);
+    }
+    return row;
+  }
+  for (const t of transits) {
+    const src = entry(t.source),
+      dst = entry(t.target);
+    src.outgoing++;
+    dst.incoming++;
+    if (retries.has(t.token)) {
+      src.outgoingRetries++;
+      dst.incomingRetries++;
+    }
+  }
+  return result;
+}
+
 export function makeTraceHistory() {
-  const edgeId = (a: string, b: string) => [a, b].sort().join('~');
   type Trace = {
     source: string;
     target: string;
@@ -217,6 +289,7 @@ export function makeTraceHistory() {
     failed: boolean;
     at: number;
   };
+  const retries = new Set<string>();
   let plannedPacket: string | undefined;
   let epochKey = '',
     last = 0;
@@ -227,6 +300,7 @@ export function makeTraceHistory() {
       epochKey = key;
       last = 0;
       plannedPacket = undefined;
+      retries.clear();
       seen = new Map();
       chosen = new Map();
     }
@@ -234,25 +308,16 @@ export function makeTraceHistory() {
       const e = rows[i],
         p = e.payload;
       const lane = p.lane === 'reply' ? 'reply' : 'forward';
-      if (
-        e.event_type === 'mixnet_route_constructed' &&
-        e.message_id &&
-        typeof p.packet_id === 'string' &&
-        Array.isArray(p.ordered_route)
-      ) {
-        plannedPacket = p.packet_id;
-        chosen = new Map();
-        const ids = p.ordered_route.filter(
-          (n): n is string => typeof n === 'string',
+      const route = extractRoute(e);
+      if (route?.retry) retries.add(route.packet);
+      if (route && e.message_id) {
+        plannedPacket = route.packet;
+        chosen = new Map(
+          route.legs.map((leg) => [
+            leg.id,
+            { ...leg, failed: false, at: e.simulation_time_ms },
+          ]),
         );
-        for (let j = 1; j < ids.length; j++)
-          chosen.set(edgeId(ids[j - 1], ids[j]), {
-            source: ids[j - 1],
-            target: ids[j],
-            lane,
-            failed: false,
-            at: e.simulation_time_ms,
-          });
       }
       if (
         plannedPacket &&
@@ -279,6 +344,6 @@ export function makeTraceHistory() {
       }
     }
     last = rows.length;
-    return { seen, chosen };
+    return { seen, chosen, retries };
   };
 }

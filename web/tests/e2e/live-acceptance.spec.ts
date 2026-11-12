@@ -351,6 +351,32 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   const row = deviceLog.locator('.logrow').filter({ hasText: edited });
   await expect(row).toHaveCount(1);
   await expect(row.locator('time')).toHaveAttribute('title', /^\d+ ms$/);
+  await chooseFilter(
+    page.getByRole('combobox', { name: /^Event category/ }),
+    'Routing',
+  );
+  await page
+    .getByPlaceholder('Event, conversation or packet')
+    .fill('mixnet_route_constructed');
+  await timeline
+    .getByRole('button', { name: 'mixnet_route_constructed', exact: true })
+    .first()
+    .click();
+  await timeline.getByRole('button', { name: 'Show recorded route' }).click();
+  const originalHops = route(failure.payload.token).payload
+    .ordered_route as string[];
+  const pathIds = originalHops
+    .slice(1)
+    .map((hop, index) => [originalHops[index], hop].sort().join('~'));
+  expect(
+    await graph
+      .locator('[data-inspected-path]')
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute('data-inspected-path')),
+      ),
+  ).toEqual(pathIds);
+  await button('Clear recorded route').click();
+  await expect(graph.locator('[data-inspected-path]')).toHaveCount(0);
   expect(errors).toEqual([]);
   if (process.env.SIM_GRAPH_EVIDENCE) {
     await mkdir(process.env.SIM_GRAPH_EVIDENCE, { recursive: true });

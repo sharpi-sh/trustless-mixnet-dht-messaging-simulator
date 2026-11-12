@@ -7,3 +7,6 @@ Each conversation advances independently. The next exchange waits for the preced
 A disabled receiver keeps its pending messages at its provider. Re-enabling polling allows its next fixed-period pull to discover them. A path block applies immediately at the current logical timestamp. Existing transits can finish unless the operator explicitly selects **Drop in flight**. An offline destination causes an unresponsive observation. End-to-end retries draw a fresh packet and route within the configured budget.
 
 Step advances one scheduled Python action. Pause holds the logical clock. Playback delay controls the wall-clock wait between actions. A 500-second simulated outage need not take 500 seconds to watch. Reset reconstructs the staged network from its seed and clears runtime logs, interventions and session keys. Cryptographic randomness remains independent of that seed.
+
+
+The conversation reaches completion when every planned forward and reply has reached its terminal outcome. The final snapshot retains the logical clock and any background polling, cover or maintenance work that was outstanding at that instant. In the event timeline, open a route-construction event and choose **Show recorded route** to inspect its packet path. **Clear recorded route** returns the graph to live selection.
