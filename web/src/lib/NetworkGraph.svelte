@@ -12,6 +12,7 @@
     type MessageLeg,
     extractRoute,
     packetRetryNotice,
+    promoteJourney,
     transitEndpoints,
   } from './graph-layout';
   import { channelNames, isChannel } from './channels';
@@ -142,6 +143,13 @@
     [leg.pathId, leg.lane, leg.source, leg.messageId].join('/');
   let pickedTrack = $derived(
     selectedLeg ? messageTrackMap.get(trackId(selectedLeg)) : undefined,
+  );
+  let selectedJourneyId = $derived(selectedLeg?.messageId);
+  let displayMessageTracks = $derived(
+    promoteJourney(messageTracks, selectedJourneyId),
+  );
+  let groupedStages = $derived(
+    new Set(layout.groups.flatMap((group) => group.stageIndices)),
   );
   function choosePath(id: string) {
     pick = null;
@@ -530,16 +538,31 @@
           ></defs
         >
         <rect width={layout.width} height={layout.height} fill="#f8faf8" />
+        {#each layout.groups as group (group.id)}
+          <g class="topology-group" data-group-id={group.id}>
+            <rect
+              x={group.x}
+              y="3"
+              width={group.width}
+              height={layout.height - 6}
+              rx="11"
+            />
+            <text x={group.x + group.width / 2} y="17">{group.name}</text>
+          </g>
+        {/each}
         {#each layout.stages as band (band.index)}
-          <g class={'band ' + band.kind}
+          {@const grouped = groupedStages.has(band.index)}
+          <g class={'band ' + band.kind} class:grouped
             ><rect
               x={band.x}
-              y="14"
+              y={grouped ? 24 : 14}
               width={band.width}
-              height={layout.height - 28}
+              height={layout.height - (grouped ? 38 : 28)}
               rx="8"
             />
-            <text x={band.x + band.width / 2} y="36">{band.name}</text></g
+            <text x={band.x + band.width / 2} y={grouped ? 43 : 36}
+              >{band.name}</text
+            ></g
           >
         {/each}
         <rect
@@ -586,11 +609,12 @@
             {/each}
           </g>
         {/each}
-        {#each messageTracks as track (track.id)}
+        {#each displayMessageTracks as track (track.id)}
           <g
             class="message-track"
             class:failed={track.latest.status === 'failed'}
             class:chosen={pickedTrack?.id === track.id}
+            class:journey-selected={selectedJourneyId === track.messageId}
             style:--message-colour={track.colour}
             data-message-id={track.messageId}
             data-message-path={track.pathId}
@@ -598,6 +622,7 @@
             data-source={track.source}
             data-target={track.target}
             data-lane={track.lane}
+            data-journey-selected={selectedJourneyId === track.messageId}
             role="button"
             tabindex="0"
             aria-label={track.messageId +
@@ -1127,6 +1152,24 @@
     max-width: none;
     flex: none;
   }
+  .topology-group rect {
+    fill: none;
+    stroke: #8fa39a;
+    stroke-width: 1.1;
+  }
+  .topology-group text {
+    fill: #2f4439;
+    font: 700 10px var(--mono, monospace);
+    letter-spacing: 0.09em;
+    text-anchor: middle;
+    text-transform: uppercase;
+  }
+  .topology-group[data-group-id='dht'] rect {
+    stroke: #93a4c0;
+  }
+  .topology-group[data-group-id='dht'] text {
+    fill: #425775;
+  }
   .band rect {
     fill: #ecf1ef;
     stroke: #dce5df;
@@ -1302,6 +1345,14 @@
   .message-track:focus-visible .message-line,
   .message-track.chosen .message-line {
     stroke-width: 1.75;
+  }
+  .message-track.journey-selected .message-halo {
+    stroke: white;
+    stroke-width: 5.5;
+    opacity: 1;
+  }
+  .message-track.journey-selected .message-line {
+    stroke-width: 2.5;
   }
   .history-dot {
     fill: var(--message-colour);
