@@ -22,7 +22,7 @@ def test_three_west_providers_receive_reproducible_seeded_sender_associations():
         "provider-west-3",
     )
     assert first.provider_by_person == second.provider_by_person
-    assert set(first.provider_by_person[f"sender-{index}"] for index in range(1, 11)) == set(
+    assert {first.provider_by_person[f"sender-{index}"] for index in range(1, 11)} == set(
         first.mixnet.west_providers
     )
     assert first.provider_for("receiver-1") == "provider-east"

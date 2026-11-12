@@ -36,7 +36,7 @@ for (const seed of [null, '2046379413032268']) {
         '[data-message-id="msg-1"][data-source="sender-1"][data-target="tor-sender-1"]';
       const firstMarker = '[data-transit-id]' + sender;
       const next =
-        '[data-message-id="msg-1"][data-source="tor-sender-1"][data-target="provider-west"]';
+        '[data-message-id="msg-1"][data-source="tor-sender-1"][data-target^="provider-west"]';
       // Record the transient second marker even when Playwright resumes after its arrival.
       await page.evaluate((selector) => {
         const graph = document.querySelector(

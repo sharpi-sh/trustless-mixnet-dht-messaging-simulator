@@ -164,8 +164,8 @@
           : node.id === 'provider-east'
             ? 'East serves the recipient devices.'
             : 'The anonymous service gateway terminates mixed DHT and vault requests.'}
-        The names indicate diagram positions. Provider mailbox pools are not
-        replicated, so an outage interrupts assigned devices until recovery.
+        The names indicate diagram positions. Provider mailbox pools are not replicated,
+        so an outage interrupts assigned devices until recovery.
       </p>{/if}
     <dl class="facts">
       {@render datum('Node ID', node.id, true)}{@render datum(

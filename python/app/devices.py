@@ -1,9 +1,10 @@
 """Device-owned plaintext, published contacts, signed reply keys and safe provenance."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Literal
 
 from .config import Model
 from .crypto import seal, sign_bundle, unseal, verify_bundle
