@@ -5,7 +5,9 @@ from app.server import app
 
 def test_connection_has_no_side_effect():
     with TestClient(app) as client:
-        assert client.get("/health").json()["simulation_active"] is False
+        health = client.get("/health").json()
+        assert health["simulation_active"] is False
+        assert health["message_paced_playback"] is True
         assert client.get("/api/config").json()["exchanges"] == 1
         assert (
             "access-control-allow-origin"

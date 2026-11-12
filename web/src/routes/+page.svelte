@@ -136,6 +136,13 @@
       {$store.error || uiError}
     </p>{/if}
 
+  {#if connected && !$store.messagePacedPlayback}
+    <p class="startup-hint">
+      This Python server uses the earlier playback timing. Connect to a server
+      started from the updated checkout to follow the first message on Run.
+    </p>
+  {/if}
+
   {#if view === 'connection'}
     <section class="connection-grid">
       <div class="panel endpoint-panel">
