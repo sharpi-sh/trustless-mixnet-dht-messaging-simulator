@@ -18,8 +18,8 @@ The simulator makes an end-to-end message journey visible and inspectable:
 
 - multiple people sending text messages and anonymous replies;
 - a separate Tor abstraction for every participant;
-- mixnet peer discovery, local routing knowledge, batching, route selection, failures and bounded retries;
-- Kademlia-inspired DHT discovery of opaque mailbox and manifest records;
+- the Loopix 2017 stratified mixnet algorithm, including independent source routes, Sphinx packet processing, exponential per-hop delays and Poisson cover traffic;
+- the original 2002 Kademlia DHT algorithm, including 160-bit IDs, XOR distance, `k = 20` buckets, `alpha = 3` parallel lookups and the defined RPC behaviour;
 - encrypted message chunking, replicated distributed storage, retrieval and reconstruction;
 - independently changing node availability;
 - recipient polling rather than unsolicited delivery;
@@ -29,11 +29,18 @@ The simulator makes an end-to-end message journey visible and inspectable:
 
 Python is authoritative for all simulation state and decisions. The browser only controls and visualises the simulation. The first implementation uses simulated local components and does not connect to Tor, public DHT peers, mixnet operators or distributed storage services.
 
+Technology labels are fidelity claims. A node shown as Kademlia or Loopix must execute that named algorithm rather than a generic approximation. The UI displays the protocol name, paper/version, active parameters and any explicitly documented simulator boundary. The combined messaging architecture is experimental; using faithful subsystem algorithms does not make the whole system a formally verified implementation.
+
+Reference algorithms:
+
+- [The Loopix Anonymity System, USENIX Security 2017](https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-piotrowska.pdf)
+- [Kademlia: A Peer-to-peer Information System Based on the XOR Metric, 2002](https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf)
+
 ## Code components
 
-- **Python simulation engine:** people, cryptographic identities, Tor abstractions, mixnet and DHT nodes, storage nodes, routing tables, network steps, scheduling, availability and message processing.
+- **Python simulation engine (`python/`):** people, cryptographic identities, Tor abstractions, Loopix providers and mix nodes, Kademlia DHT nodes, storage nodes, network steps, scheduling, availability and message processing.
 - **FastAPI service:** typed HTTP commands, health and state endpoints, plus a WebSocket event stream.
-- **SvelteKit frontend:** connection and configuration screens, controls, inspectors and event timeline.
+- **SvelteKit/Vite web client (`web/`):** connection and configuration screens, controls, algorithm inspectors and event timeline.
 - **D3/SVG visualisation:** topology, actual routes, alternatives, failures, retries and node state.
 - **Cryptography layer:** maintained Python primitives for recipient confidentiality, ciphertext integrity, key agreement and reply-key handling.
 
@@ -43,13 +50,13 @@ The implementation specification is in [`.agents/instructions/distributed-messag
 
 The planned implementation requires:
 
-- Python 3.12 or a compatible version declared by the future `pyproject.toml`;
-- Node.js 20 LTS or a compatible version declared by the future frontend package;
+- Python 3.12 or a compatible version declared by `python/pyproject.toml`;
+- Node.js 20 LTS or a compatible version declared by `web/package.json`;
 - npm;
 - two local terminal sessions;
 - a modern browser with WebSocket and SVG support.
 
-Exact Python and JavaScript dependencies will be installed from the committed lock and project files once those files exist. Expected core dependencies include FastAPI and Uvicorn for the backend, and SvelteKit, Vite and D3 for the frontend.
+Exact Python and JavaScript dependencies will be installed from the committed lock and project files once those files exist. Expected core dependencies include FastAPI and Uvicorn for the Python service, and SvelteKit, Vite and D3 for the web client.
 
 ## Installation
 
@@ -58,9 +65,9 @@ After the implementation files have been added:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -e "./python[dev]"
 
-cd frontend
+cd web
 npm install
 ```
 
@@ -72,7 +79,7 @@ Start the Python backend from the repository root:
 
 ```bash
 source .venv/bin/activate
-python backend/main.py
+python python/main.py
 ```
 
 The backend binds to `127.0.0.1`, selects an available port beginning at `8000`, and prints its actual HTTP and WebSocket endpoints.
@@ -80,7 +87,7 @@ The backend binds to `127.0.0.1`, selects an available port beginning at `8000`,
 In a second terminal, start the frontend:
 
 ```bash
-cd frontend
+cd web
 npm run dev
 ```
 

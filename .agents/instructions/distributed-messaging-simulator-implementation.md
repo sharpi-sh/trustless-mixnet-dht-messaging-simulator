@@ -14,8 +14,8 @@ Build the application described in this document. Treat this document as the sou
 
 ### Non-negotiable architecture
 
-1. **Python is the simulation engine.** All simulated people, Tor abstractions, mixnet nodes, DHT nodes, storage nodes, routing tables, node availability, routing decisions, message processing, chunking, manifests, polling, retries and simulation events are implemented in Python.
-2. **SvelteKit is the frontend.** It provides the connection screen, configuration controls, D3 network visualisation, node inspector, routing-table inspector, event stream, timeline and playback controls.
+1. **Python is the simulation engine.** All simulated people, Tor abstractions, providers, mixnet nodes, DHT nodes, storage nodes, protocol state, node availability, route construction, message processing, chunking, manifests, polling, retries and simulation events are implemented in Python.
+2. **SvelteKit is the web client.** It provides the connection screen, configuration controls, D3 network visualisation, node inspector, protocol-state and algorithm inspector, event stream, timeline and playback controls.
 3. **FastAPI exposes the Python HTTP API and WebSocket.** The browser sends commands to Python and receives events from Python.
 4. **Do not implement a second simulation engine in JavaScript.** JavaScript must not independently decide routes, generate node availability, perform DHT lookups, select storage nodes or simulate message delivery.
 5. **The Python process starts separately from SvelteKit.** The developer starts Python in one terminal, then starts SvelteKit with `npm run dev` in another.
@@ -26,6 +26,11 @@ Build the application described in this document. Treat this document as the sou
 10. **Do not claim the simulator proves anonymity or production security.** It is a model for exploring and testing protocol behaviour and failure cases.
 11. **Every executable network step is an object.** Routing attempts, node transitions, polling, lookup, storage and retrieval actions must be represented by explicit Python `SimulationStep` objects rather than anonymous callbacks or untyped dictionaries.
 12. **Every simulation owns one global observer.** The MVP `GlobalObserver` is a no-op placeholder: it has identity and lifecycle only, performs no observation, receives no privileged state and does not affect the simulation.
+13. **Technology names are fidelity claims.** A node labelled as Loopix or Kademlia must execute the named, versioned reference algorithm and expose its parameters. Do not substitute a generic peer-routing or mixing approximation while retaining the technology label.
+14. **The repository layout is fixed.** Python code, project metadata and tests live under `python/`; the SvelteKit/Vite client lives under `web/`. Do not create `backend/` or `frontend/` application directories.
+15. **Abstractions must be labelled as abstractions.** The existing Tor boundary is a `Tor abstraction`, not a Tor implementation. Apply the same rule to any future component that does not execute a complete named reference protocol.
+16. **Every traversable connection is a `NetworkPath` object.** It owns endpoints, transport label, state and simulated transit delay so Python can represent a message as in transit between nodes. Transit delay is separate from Loopix mix delay, logical outage duration and playback pacing.
+17. **Tests are part of each implementation step.** Stop after each logical unit, write or update its tests, run the focused tests and inspect expected outputs before implementing the next unit. Do not defer tests until a phase or the full codebase is complete.
 
 ### Implementation discipline
 
@@ -35,8 +40,10 @@ Build the application described in this document. Treat this document as the sou
 - Use deterministic random seeds so a scenario can be reproduced.
 - Commit in logical implementation stages if working in a Git repository.
 - Run tests after each logical stage and provide a test/coverage report.
+- Work in short test/implementation/verification loops. A logical component is incomplete until its focused tests pass and its observable output has been checked.
 - Do not silently invent protocol rules where this specification marks a decision as unresolved. Implement an explicit interface or documented MVP assumption instead.
 - Do not add authentication, registration, contact approval, a central identity directory or a pre-shared secret as a prerequisite for Alice to send Bob a message. The intended starting model is that Bob publishes a public key on a public webpage and Alice retrieves it.
+- Keep a protocol registry in Python containing the exact algorithm name, reference, version/date, parameters and declared simulation boundaries. Return it through the API and display it in the UI.
 
 ---
 
@@ -56,12 +63,15 @@ The user should be able to:
 - Press **Create simulation** to make Python generate the people and network objects.
 - Press **Run** to execute the simulation.
 - Watch messages travel through randomly selected network nodes.
-- Inspect each node's local routing table and current knowledge of peers.
+- See when a message is queued at a node, travelling on a network path or delivered to the next node.
+- Inspect each node's protocol-specific state: Loopix layer adjacency or Kademlia routing buckets.
 - Watch nodes go offline and recover for independently randomised periods.
 - Observe routing failures, timeouts, retries and alternative paths.
 - Observe Bob polling for messages rather than receiving unsolicited server push notifications.
 - Inspect the information visible to each simulated participant or node.
 - Replay a scenario using the same random seed.
+- Edit each sender's staged message before running, configure 1–10 exchanges and inspect device-local send/reply logs.
+- Disable or enable receiver polling and block or restore network paths while a simulation is running.
 
 The application is intended to make the internal behaviour visible and inspectable. The UI should show what each step did, what data was passed, which node made a decision, what alternatives were available and why a route failed or succeeded.
 
@@ -91,7 +101,7 @@ The backend may use 8000, 8001, 8002 or another available port. The frontend mus
 - Mobile applications.
 - Cloud deployment, user accounts or multi-tenant hosting.
 - Proving resistance to a global passive adversary.
-- Implementing a production-grade mixnet protocol without further protocol specification.
+- Claiming that the experimental composition of Loopix, Kademlia and distributed storage inherits the formal security properties of any component.
 - Treating a diagram as evidence that a real network is secure.
 
 The simulator may model network addresses and independent node operators, but those are simulated properties. It must not pretend that random private IP addresses are real routable Internet endpoints.
@@ -106,7 +116,7 @@ The simulator may model network addresses and independent node operators, but th
 
 ### Acceptance criteria
 
-- Running `python main.py` starts the FastAPI application.
+- Running `python python/main.py` from the repository root starts the FastAPI application.
 - The backend tries port 8000 first.
 - If port 8000 is unavailable, it tries the next configured port, for example 8001, 8002 and so on.
 - The port is selected by successfully binding the server socket, not by merely checking whether a port appears unused.
@@ -193,24 +203,26 @@ The endpoint input is for a local development backend. Do not expose the Python 
 - Sender count is configurable from 1 to 10.
 - Receiver count is configurable from 1 to 10.
 - Mixnet node count is configurable within the initial rule range of 10 to 20.
+- Sender count, receiver count and mixnet node count appear together in the same network setup panel.
 - The user can choose a fixed mixnet node count or ask Python to randomise the count within the selected minimum and maximum.
 - The number of senders and receivers represents the number of separate `Person` instances Python creates.
 - A person is not a special Alice-only or Bob-only class. Alice, Bob and later participants are instances of the same `Person` class with different IDs, display names and roles in a communication scenario.
 - Each person has an independent client state and their own `TorNetwork` instance.
 - Each person has their own cryptographic identity/key material generated by Python for the simulation.
 - The configuration includes conversation/message exchange settings.
-- The user can configure the number of message exchanges per conversation.
+- The user can configure 1–10 message exchanges per conversation.
 - An exchange means one message followed by a reply. Therefore, five exchanges in a two-person conversation normally means ten message transmissions.
 - The UI must label exchanges and total messages clearly so the user does not confuse them.
 - The configuration supports one sender to one receiver, multiple senders to one receiver, one sender to multiple receivers, and multiple senders/receivers.
 - The communication pairing strategy must be explicit, not inferred from sender and receiver counts alone.
 - Initial pairing strategies: `all_to_one`, `one_to_all`, `one_to_one_pairs`, and `random_pairs`.
-- The user can configure the number of exchanges per conversation.
 - A random seed may be supplied or generated. The seed must be returned in the generated simulation metadata.
 - The user presses **Create simulation** to ask Python to generate the objects.
 - Python returns a topology snapshot and simulation ID.
 - The UI renders the generated topology only after receiving that response.
 - Creating the simulation does not automatically start message traffic.
+- After creation and before **Run**, the UI shows the staged outgoing messages for every sender and permits the user to edit them.
+- **Reset** recreates or restores the staged run, returns to this editable pre-run state and does not start traffic automatically.
 - The user then presses **Run** to begin execution.
 
 ## Scenario 5: Watch the generated network
@@ -224,48 +236,52 @@ The endpoint input is for a local development backend. Do not expose the Python 
 - SVG is used for node and edge rendering.
 - The UI must not invent nodes or edges that are absent from Python's topology.
 - Nodes have stable IDs.
-- Nodes are visually grouped by layer/type.
-- The graph distinguishes people, their Tor abstractions, mixnet nodes, DHT nodes and storage nodes.
+- Nodes are visually grouped into stable left-to-right protocol-stage columns.
+- The graph distinguishes people, their Tor abstractions, Loopix providers and mix nodes, Kademlia DHT nodes and generic replicated-storage nodes.
 - The user can zoom and pan.
 - The user can select a node.
 - Selecting a node opens the node inspector.
-- Selecting a peer in a routing table highlights the corresponding graph node and connection.
+- Selecting a peer in a protocol-state table highlights the corresponding graph node and connection.
+- Sender devices occupy the left edge and recipient devices the right edge.
+- Forward message routes use the upper route lane and travel visually from the upper-left towards the right.
+- Reply routes use a lower route lane, originate visually from the lower-right and return towards the sender without duplicating any node card.
 - The graph must remain usable with the initial expected network size and should not assume a fixed number of nodes.
 
 ## Scenario 6: Observe message routing
 
-**As a user**, I want to see the actual path selected by Python, including alternative candidates and failed attempts.
+**As a user**, I want to see the actual Loopix source route selected by Python, including eligible candidates and failed end-to-end attempts.
 
 ### Acceptance criteria
 
-- Python selects the next hop.
-- JavaScript does not select or recalculate the route.
-- Python emits a routing decision event for each decision.
-- The event includes the current node, available candidates, excluded candidates, selected peer and a reason/code for the selection.
+- Python selects an independent source route for every packet using the Loopix 2017 stratified topology: ingress provider, one randomly selected mix from each ordered layer, then egress provider.
+- Each Sphinx routing layer determines the next hop. An intermediate mix node must not invent or recalculate a route.
+- JavaScript does not select or recalculate routes.
+- Python emits route-construction and per-hop packet-processing events.
+- Route-construction events include the algorithm identifier, ordered layers, eligible candidates, excluded candidates, selected node per layer and seeded random decision context.
 - The UI animates the message along the actual selected path.
+- Every traversed edge is a Python-owned `NetworkPath` object with its own simulated transit delay and state.
+- Python emits `path_transit_started` and `path_transit_completed` events so the UI can leave the message marker visibly travelling between nodes for the logical path delay.
+- Node queueing/mixing delay and path transit delay are displayed separately.
 - The UI distinguishes attempted, successful, failed and retried hops.
 - Clicking a routing decision shows the decision details.
 - The UI can show candidate peers that were not selected.
-- A route is not presented as predetermined or hardcoded.
-- A failed hop can cause the sending node to retry through a different eligible peer according to the routing policy.
-- The retry policy must have bounded attempts and a clear terminal failure state.
+- A route is source-routed per packet but is not hardcoded or reused silently between messages.
+- A failed hop terminates that packet attempt. Reliability is an end-to-end application concern; a bounded retry creates a new packet with a newly sampled independent source route.
+- The end-to-end retry policy must have bounded attempts and a clear terminal failure state.
 - A retry must not duplicate message delivery without an explicit deduplication policy.
 
-## Scenario 7: Inspect each mixnet node's routing table
+## Scenario 7: Inspect each mixnet node's protocol state
 
-**As a user**, I want to inspect what each mixnet node knows about its peers at the moment it makes a routing decision.
+**As a user**, I want to inspect each mixnet node's layer, adjacent-layer connectivity and Sphinx packet-processing state.
 
 ### Acceptance criteria
 
-- Every `MixNode` owns a local routing table.
-- The `Mixnet` manager may assist with initial bootstrap configuration, but must not silently give every node a complete authoritative list of all nodes.
-- Different nodes may have different peer knowledge.
-- The routing table changes as peers are discovered, become unreachable, recover or age out.
-- The UI shows a selected node's routing table.
-- The table shows peer ID, simulated address, status, last-seen time, failure count and relevant routing metadata.
-- The table distinguishes a peer known to be offline from a peer that is merely unresponsive or whose status is stale.
-- Routing table updates are streamed from Python to the frontend.
-- The UI does not fabricate peer entries.
+- Every `MixNode` belongs to exactly one Loopix layer and owns adjacency state for the nodes in the immediately preceding and following layers.
+- Adjacent-layer connectivity follows the Loopix 2017 stratified topology; do not replace it with gossip discovery, Kademlia or arbitrary next-hop selection.
+- The UI shows the selected node's layer, adjacent peers, Sphinx replay-tag state, queued packets and configured exponential-delay parameter.
+- The adjacency table shows peer ID, simulated address, layer, observed availability, last contact and failure count.
+- The table distinguishes configured topology from observed reachability.
+- State updates are streamed from Python to the web client, which must not fabricate peer entries.
 
 ## Scenario 8: Randomised node availability
 
@@ -292,12 +308,14 @@ The endpoint input is for a local development backend. Do not expose the Python 
 
 ### Important timing rule
 
-There are two separate concepts:
+Keep these concepts separate:
 
-1. **Simulation time:** the logical time used to schedule outages, timeouts, polling and network behaviour.
-2. **Playback delay:** the real-time pause between simulation steps, controlled by the frontend slider.
+1. **Simulation time:** the logical clock used for outages, timeouts, polling and all network behaviour.
+2. **Path transit delay:** logical time spent travelling across a `NetworkPath` between two node objects.
+3. **Loopix mix delay:** logical time a packet remains queued at a mix according to its source-selected exponential delay.
+4. **Playback delay:** the real-time pause between displayed simulation steps, controlled by the web client.
 
-The playback delay must not change outage durations.
+Playback delay must not change path transit, mix or outage durations. Path transit delay must not be reused as Loopix mixing delay.
 
 Example:
 
@@ -319,6 +337,8 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 - Bob is an instance of `Person`.
 - Bob owns a `TorNetwork` instance.
 - Bob's client has a polling interval or polling schedule.
+- Receiver polling can be enabled or disabled in configuration and toggled while the simulation is running.
+- When polling is disabled, stored messages remain undiscovered and the receiver cannot generate replies until polling resumes and retrieval completes.
 - Bob initiates a poll through his own Tor abstraction.
 - The request traverses the simulated network according to the implemented route.
 - Bob is not automatically notified by a storage node when a message arrives.
@@ -345,6 +365,48 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 - The UI can filter events by participant, conversation, message, node and event type.
 - The UI does not assume one sender and one receiver.
 
+## Scenario 11: Block and restore network paths in real time
+
+**As a user**, I want to block links or boundaries between protocol stages while the simulation runs so I can observe exact failure and retry behaviour.
+
+### Acceptance criteria
+
+- The UI allows a user to select a `NetworkPath` or a stage boundary and issue **Block route** or **Restore route**.
+- The web client sends a typed command to Python; it never changes authoritative path state locally.
+- Blocking a stage boundary applies to the Python-owned paths crossing that boundary.
+- A block takes effect at a deterministic simulation event and prevents new transits from starting.
+- A packet already in transit completes by default. An explicit `drop_in_flight` test option may terminate it, but that behaviour must be visible and logged.
+- Blocked paths remain visible, use a distinct failure treatment and expose who blocked them and at what simulation time.
+- Route restoration is observable and makes the path eligible again according to the relevant protocol.
+
+## Scenario 12: Edit messages and inspect device logs
+
+**As a user**, I want to edit staged messages before a run and inspect the resulting conversation on each participant's device.
+
+### Acceptance criteria
+
+- After **Create simulation** or **Reset**, each sender has editable staged text for every configured exchange.
+- The user may replace any generated message before pressing **Run**.
+- Default messages and replies are deterministic random strings of 3–10 words selected from the first few sentences of Lorem ipsum, using the simulation RNG.
+- One exchange contains one sender message and one recipient reply; the configured range is 1–10 exchanges.
+- A run uses the final staged text returned to Python, not stale browser-only state.
+- Every participant device card contains a chronological conversation log.
+- A log row shows direction, simulation timestamp and plaintext available to that device, for example `SEND 11:23 pm  Hi Bob, how are you?` or `REPLY 11:40 pm  Lorem ipsum dolor`.
+- Logs distinguish staged, sent, delivered, received and replied states without exposing plaintext in network-node inspectors or general telemetry.
+
+## Scenario 13: Inspect cryptographic data lineage
+
+**As a user**, I want to see where public keys, encrypted payloads, manifests and fragments move without exposing secret material.
+
+### Acceptance criteria
+
+- Python emits typed lineage events for public-key retrieval, reply-key encapsulation, encryption, chunking, manifest publication, fragment storage, retrieval, reconstruction and decryption.
+- The UI can highlight the current location and containment relationship of each safe-to-display artefact.
+- Alice's reply public key travels inside the encrypted message content. It may be represented as accompanying encrypted chunks and the encrypted manifest, but it must not be shown as plaintext stored in the DHT.
+- Bob learns the reply public key only after retrieving, reconstructing and decrypting the message bundle.
+- The UI clearly labels the key as an unverified reply key; its presence does not authenticate Alice.
+- Private keys and plaintext network payloads never appear in path, DHT, storage or mixnet telemetry.
+
 ---
 
 # 3. Functional requirements
@@ -356,7 +418,7 @@ Do not implement a confusing time multiplier unless it is explicitly added as a 
 Provide a Python entry point:
 
 ```bash
-python main.py
+python python/main.py
 ```
 
 The entry point must:
@@ -393,7 +455,9 @@ Create typed request/response schemas. Validate:
 - Sender count: 1–10.
 - Receiver count: 1–10.
 - Mixnet node count: initial supported range 10–20.
-- Exchange count: positive bounded integer.
+- Exchange count: integer from 1 to 10.
+- Receiver polling enabled: boolean, with optional per-receiver overrides.
+- Network-path transit delay and jitter values: non-negative and within configured safety limits.
 - Outage durations: non-negative and logically valid.
 - Playback delay: bounded positive integer in milliseconds.
 - Pairing strategy: one of the supported enumerated values.
@@ -415,13 +479,15 @@ It receives a validated configuration and returns:
 - generated mixnet nodes
 - generated DHT nodes
 - generated storage nodes
+- generated `NetworkPath` objects
 - generated initial topology
 - conversation/pairing plan
+- editable staged message plans
 - initial availability state
-- initial routing-table snapshots
+- protocol registry and initial per-node protocol-state snapshots
 - configuration summary
 
-The create operation must not start message traffic.
+The create operation must not start message traffic. It returns enough state for the web client to render the topology, device editors and generated default messages before **Run**.
 
 ### FR-PY-005: Simulation lifecycle
 
@@ -437,6 +503,8 @@ Support:
 
 Commands must be idempotent where appropriate. Invalid lifecycle transitions must return clear errors.
 
+`reset` returns the simulation to an editable pre-run state, clears runtime message/device logs, restores configured path state and regenerates or restores staged messages according to the reset request and seed.
+
 ### FR-PY-006: Event scheduler
 
 Implement a deterministic event scheduler. It should process one simulation event/step at a time and publish an event to connected frontend clients.
@@ -445,13 +513,16 @@ The scheduler must support:
 
 - message processing events
 - polling events
-- routing decisions
+- Loopix route construction and Sphinx packet-processing events
+- network-path transit start/completion/failure events
 - node state changes
+- path block/restore events
 - timeouts
 - retries
-- batch release events
+- Poisson-mix delayed-release events
 - storage and DHT events
 - message reconstruction/decryption events
+- cryptographic lineage and device-log events
 
 Do not scatter arbitrary `asyncio.sleep()` calls throughout domain objects. The scheduler owns pacing and event execution.
 
@@ -478,15 +549,37 @@ All random decisions should use the simulation RNG, including:
 - node count if randomised
 - node IDs where suitable (cryptographic IDs should use secure randomness where required)
 - generated simulated addresses
-- initial topology
-- peer discovery order
-- route candidate selection
+- layer assignment and initial Kademlia bucket state
+- per-packet Loopix source-route sampling
+- exponential delays and Poisson traffic schedules
+- Kademlia lookup scheduling where concurrent responses need deterministic ordering
 - node failure times
 - outage durations
 - conversation pairing when random
 - message scheduling where random
 
 Separate cryptographic randomness from reproducible simulation randomness. A deterministic simulation seed must not make cryptographic keys predictable. Use a cryptographically secure random source for keys, nonces and secret material.
+
+### FR-PY-009: Staged messages and deterministic defaults
+
+- Generate default sender messages and recipient replies from the first few sentences of a bundled Lorem ipsum corpus.
+- Each generated text contains 3–10 consecutive or seeded-selected words and uses the simulation RNG.
+- Provide a typed pre-run command or endpoint to replace staged text per sender, conversation and exchange.
+- Reject message-plan edits after execution starts unless the simulation is reset.
+- Validate that every configured exchange has one sender message and one reply template or generated reply.
+- Include the final accepted message plan in run metadata without exposing plaintext to network-node telemetry.
+
+### FR-PY-010: Runtime intervention controls
+
+Provide typed Python commands for:
+
+- enabling/disabling polling globally or per receiver;
+- blocking/restoring one `NetworkPath`;
+- blocking/restoring every path across a selected stage boundary;
+- choosing whether a test-only block drops existing in-flight transits;
+- requesting current participant device logs and artefact-lineage state.
+
+Every intervention is a `SimulationStep`, receives a command ID and effective simulation timestamp, emits a result event and is deterministic when replayed with the same command sequence.
 
 ---
 
@@ -526,6 +619,17 @@ Each step should expose:
 
 The scheduler queues and executes step objects. It must not encode network behaviour in anonymous callbacks, and a step must remain distinguishable from the events it emits.
 
+### Protocol fidelity and references
+
+The selected reference profiles are:
+
+- `loopix-usenix-2017`: [The Loopix Anonymity System](https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-piotrowska.pdf), USENIX Security 2017.
+- `kademlia-2002`: [Kademlia: A Peer-to-peer Information System Based on the XOR Metric](https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf), 2002.
+
+For each profile, maintain conformance tests for its routing state machine, data structures, selection rules, timing distributions and termination conditions. API metadata and the web UI must distinguish exact reference behaviour, configurable reference parameters, experimental deviations and simulator-only transport boundaries.
+
+Never display a generic category alone when a concrete algorithm is being simulated. Use labels such as `Mixnet — Loopix (USENIX 2017)` and `DHT — Kademlia (2002)`. Use `Tor abstraction` and `Replicated chunk-storage model` for components that are not complete implementations of named protocols.
+
 ## 4.2 Person
 
 One shared `Person` class represents all users.
@@ -543,13 +647,18 @@ Suggested properties:
 - `tor_network_id`
 - `outgoing_messages`
 - `received_messages`
+- `staged_message_plan`
+- `device_message_log`
 - `polling_config`
+- `polling_enabled`
 - `client_state`
 - `created_at_sim_time`
 
 The private key must never be sent to the frontend as a normal telemetry field. Do not include private key bytes in logs, event payloads or node inspectors.
 
 The frontend may display a key fingerprint and public key, but not private key material.
+
+`staged_message_plan` is editable only before a run starts or after reset. `device_message_log` is Python-owned chronological state containing direction, message ID, conversation ID, logical timestamp, delivery state and plaintext visible to that participant. The frontend renders this state inside the participant's device card.
 
 ## 4.3 Alice and Bob behaviour
 
@@ -625,17 +734,22 @@ The diagram must show Alice's Tor and Bob's Tor as separate instances.
 
 One `Mixnet` object manages multiple `MixNode` instances.
 
+The MVP mixnet algorithm is the Loopix construction published at USENIX Security 2017. Implement the protocol behaviour described by that paper: providers, a stratified topology, independent per-packet source routes, Sphinx packet processing, replay-tag rejection, source-selected exponentially distributed per-hop delays, client and mix loop traffic, drop cover traffic and fixed-size polling responses. Real sockets may be replaced by deterministic simulation steps, but the Sphinx and routing algorithms must not be replaced by placeholders. If any required part is abstracted, label the subsystem `Loopix routing model`, list the deviation in protocol metadata and do not claim a complete Loopix implementation.
+
+Loopix users are associated with providers. In this simulator that association uses an ephemeral network identifier and provider assignment; it must not introduce a username/password account, central identity directory or prior contact approval. Bob's published contact data must include the provider/network location required to construct a route without exposing Bob's physical location.
+
 Responsibilities:
 
 - create and manage mix nodes
-- provide configured bootstrap peers
-- manage the simulated peer discovery environment without giving nodes omniscient knowledge
-- coordinate network-level registration/discovery events
+- create ingress and egress `ProviderNode` instances required by the Loopix topology
+- assign every mix node to one ordered layer
+- build complete adjacency between consecutive layers, including providers at ingress and egress
+- expose eligible nodes so the sender can sample one node independently from each layer for every packet
 - expose topology snapshots for the UI
 - provide access to node lookup by ID for simulation orchestration
-- not make every route decision on behalf of a node
+- publish the exact Loopix reference and active parameters through protocol metadata
 
-The `Mixnet` manager is a simulation-level registry/manager. Do not represent it as a real central production authority.
+The `Mixnet` manager is a simulation-level registry/manager. Do not represent it as a real central production authority or as a router in the simulated protocol.
 
 ## 4.6 MixNode
 
@@ -646,17 +760,16 @@ Suggested properties:
 - `node_id`
 - `simulated_address`
 - `operator_id`
+- `layer_index`
 - `status`
 - `availability_controller`
-- `routing_table`
+- `adjacent_peers`
 - `inbound_queue`
 - `outbound_queue`
-- `batch_buffer`
-- `known_peers`
-- `failed_peers`
-- `last_seen_by_peer`
+- `delayed_packet_queue`
+- `seen_replay_tags`
 - `failure_count`
-- `mixing_config`
+- `poisson_mix_config`
 - `created_at_sim_time`
 
 A mix node can handle both incoming and outgoing traffic. Do not create separate node classes for sending and receiving unless a future protocol design requires it.
@@ -665,51 +778,44 @@ Responsibilities:
 
 - receive an envelope
 - validate that it is online and able to process
-- add a message to a batch buffer where mixing policy requires it
-- shuffle/reorder a batch according to the simulation policy
-- decide when a batch is released according to configured policy
-- select a next peer from its local eligible routing table
-- emit routing decision details
-- forward to the selected peer
-- handle acknowledgement or timeout
-- retry through an alternative eligible peer within a bounded retry policy
+- process the Sphinx packet layer and validate its integrity
+- reject a previously seen replay tag
+- unwrap exactly one Sphinx routing layer
+- enqueue the packet for the source-selected delay sampled independently from the configured exponential distribution
+- forward to the next-hop address encoded in that routing layer after the delay
+- emit packet-processing and forwarding events
+- generate mix loop cover traffic using the configured Poisson process
 - record failure and recovery events
 - update local peer status based on observations
 
-A mix node must not have a complete view of all nodes unless the scenario explicitly configures an omniscient test mode. Normal mode uses local peer knowledge.
+A mix node does not choose the next hop. The sender source-routes each packet, and the mix learns only the next routing command exposed by its Sphinx layer. Do not describe or implement batch shuffling as Loopix: Loopix uses independent exponential delays and is modelled as a Poisson mix.
 
-## 4.7 Mixnet peer discovery and routing tables
+## 4.7 Loopix topology and adjacency state
 
-Do not conflate mixnet peer discovery with Kademlia DHT lookup.
+Do not conflate the Loopix topology with Kademlia DHT lookup. Loopix 2017 does not define the ad-hoc bootstrap/gossip discovery model previously proposed for this simulator, so the MVP must not invent one and call it Loopix.
 
-The mixnet needs a peer discovery/routing mechanism. Kademlia is used for the DHT layer, not automatically as the mixnet's forwarding algorithm.
+The topology is stratified:
 
-For the MVP, implement a simple peer discovery model:
+- providers form the ingress and egress boundaries;
+- mix nodes are assigned to one fixed ordered layer;
+- every mix is connected to every mix in the immediately preceding and following layers;
+- providers connect to all nodes in the first or final mix layer as appropriate;
+- the sender independently samples one eligible node from each layer for each packet;
+- the complete ordered route and per-hop delays are encoded into the Sphinx packet before transmission.
 
-- one or more bootstrap peers are provided to a joining mix node;
-- the joining node contacts a bootstrap peer;
-- the bootstrap peer returns a limited set of known peers;
-- the joining node stores those peers in its own local routing table;
-- nodes may exchange peer information according to a configurable gossip/discovery policy;
-- nodes do not automatically learn every node in the network;
-- a node can have stale peer information;
-- a peer may be offline even though the routing table still lists it;
-- nodes can learn that a peer is unreachable only after a failed attempt or an explicit simulated status update.
-
-A future implementation may adopt a more formal peer-discovery protocol. Keep discovery behind an interface.
-
-### Routing table entry
+### Adjacency entry
 
 Suggested fields:
 
 - `peer_node_id`
 - `simulated_address`
+- `layer_index`
 - `last_seen_sim_time`
 - `status_observation`
 - `consecutive_failures`
 - `successful_contact_count`
 - `last_failure_sim_time`
-- `routing_metadata`
+- `topology_metadata`
 
 The UI must distinguish:
 - known online
@@ -717,31 +823,28 @@ The UI must distinguish:
 - unknown/stale
 - unreachable after failed attempts
 
-Do not claim that a node knows a peer's real-time availability unless it has received an observation or the simulation explicitly models a shared oracle.
+Configured adjacency is not proof of current reachability. Do not claim that a node knows a peer's real-time availability unless it has received an observation or the simulation explicitly models a shared oracle.
 
 ## 4.8 Routing algorithm and retry
 
-For each forwarding step:
+For each packet attempt:
 
-1. The current node examines its own local routing table.
-2. It filters out peers that are ineligible according to the current routing policy.
-3. It records the candidate list.
-4. It selects a next hop according to the configured routing policy.
-5. It emits a routing-decision event before attempting delivery.
-6. It attempts delivery.
-7. If the peer is unavailable or does not acknowledge before timeout, the current node records the failure.
-8. The current node updates its local view of that peer.
-9. The current node selects another eligible peer, if available.
-10. The process repeats until delivery succeeds or the retry limit is reached.
+1. The sender obtains the ordered Loopix layers and their eligible nodes.
+2. The sender samples one node uniformly from each layer using the seeded simulation RNG.
+3. The sender samples an independent per-hop delay from the configured exponential distribution with public parameter `mu`.
+4. The sender constructs the Sphinx routing layers for the ingress provider, selected mixes and egress provider.
+5. Each processing node verifies its packet-integrity result and replay tag, unwraps one routing layer, waits the encoded delay and forwards to the encoded next hop.
+6. If a hop is unavailable or times out, that packet attempt fails; an intermediate node does not rewrite the source route.
+7. If the application retry budget remains, the sender constructs a fresh packet attempt with an independently sampled route and delays.
 
 Requirements:
 
 - retry count is bounded;
 - no infinite loops;
-- prevent immediate selection of the same failed peer unless explicitly configured;
-- avoid routing loops using message/route metadata and hop limits;
+- a retry uses a new packet/replay tag and independently sampled source route;
+- exact-once delivery is protected by message IDs and recipient deduplication;
 - expose all decisions and failures to the event stream;
-- do not make the UI choose a fallback route;
+- do not make the UI or an intermediate mix choose a fallback route;
 - do not silently drop messages.
 
 A node cannot know with certainty whether a remote peer is offline merely because one request timed out. Represent the result as a timeout/unresponsive observation, not an omniscient fact.
@@ -758,7 +861,20 @@ Objects:
 - `DHTRecord`
 - `MailboxManifestRecord` or equivalent record type
 
-Use a Kademlia-inspired model for DHT lookup and routing.
+Implement the original Kademlia algorithm described by Maymounkov and Mazières in 2002, not a Kademlia-inspired approximation.
+
+Required MVP parameters and behaviour:
+
+- random 160-bit node IDs and keys;
+- integer XOR distance `d(x, y) = x XOR y`;
+- dynamically split, least-recently-seen `k`-buckets with `k = 20`;
+- live-old-contact preference and ping-before-eviction;
+- `PING`, `STORE`, `FIND_NODE` and `FIND_VALUE` RPC semantics;
+- parallel asynchronous lookup with concurrency `alpha = 3`;
+- lookup termination after the `k` closest seen nodes have responded, following the paper's iterative procedure;
+- storage at the `k` closest nodes;
+- join by bootstrap contact, self-lookup and required bucket refreshes;
+- refresh and republishing behaviour represented in simulation time.
 
 Each `DHTNode` has:
 
@@ -769,7 +885,7 @@ Each `DHTNode` has:
 - availability state
 - peer observation state
 
-Kademlia node IDs and XOR distance are used for DHT peer lookup. Do not describe this as the mixnet's message-forwarding algorithm.
+The simulated transport does not need real UDP sockets, but its RPC state transitions, bucket maintenance, lookup ordering and termination must match the reference algorithm. Do not describe Kademlia as the mixnet's message-forwarding algorithm.
 
 The DHT stores lookup/manifest metadata, not plaintext message content.
 
@@ -831,8 +947,11 @@ Potential fields:
 - cryptographic version/algorithm identifiers
 - nonce and ephemeral public key metadata required by the encryption construction
 - sender reply public key inside the encrypted content, not exposed as plaintext metadata unless the protocol explicitly allows it
+- safe lineage metadata stating that an encrypted reply-key field is contained in the encrypted bundle, without revealing its value before recipient decryption
 
 The manifest's privacy properties are not fully specified. Do not assume that encrypting a manifest with Bob's public key automatically solves all metadata leakage. Document which fields are visible to DHT/storage nodes and which are encrypted.
+
+The lineage view may show that Alice's encrypted message bundle contains a reply public key and that its encrypted chunks were indexed through the DHT. It must not show or store Alice's reply public key as plaintext DHT metadata. Bob obtains the value only after successful reconstruction and decryption, and the UI labels it as unverified.
 
 ## 4.12 Simulation support objects
 
@@ -847,6 +966,7 @@ Suggested objects:
 - `EventBus`
 - `TopologySnapshotBuilder`
 - `GlobalObserver`
+- `NetworkPath`
 
 `Simulation` owns a single run and all of its domain objects.
 
@@ -857,6 +977,37 @@ Suggested objects:
 `EventBus` publishes typed events to the WebSocket layer.
 
 `GlobalObserver` is instantiated once and owned by `Simulation`. In the MVP it is deliberately inert: it does not subscribe to events, inspect nodes, record traffic, receive hidden state or influence execution. It exists only as an explicit extension point for a future approved observer or adversary model.
+
+## 4.13 NetworkPath
+
+Every traversable connection between simulated objects is an explicit `NetworkPath` object. Do not represent a message jump as an instantaneous event or infer authoritative connections from D3 edges.
+
+Suggested properties:
+
+- `path_id`
+- `source_id`
+- `target_id`
+- `stage_from` and `stage_to`
+- `transport_label`
+- `protocol_profile`
+- `status`: `available`, `blocked`, `unresponsive` or `offline`
+- `base_transit_delay_ms`
+- optional seeded jitter configuration
+- active transit IDs
+- block metadata and effective simulation time
+- counters for attempted, completed, failed and dropped transits
+
+Starting a transit schedules a `PathTransitStep` at the current simulation time and a corresponding completion step at `current_time + transit_delay`. Emit start, progress metadata and completion/failure events. The web client uses those events and timestamps to animate the marker for the correct proportion of playback time while Python remains authoritative.
+
+Use explicit transport labels in the diagram:
+
+- participant device to its Tor boundary: `local/TCP abstraction` where that illustrative mode is enabled;
+- Tor egress to Loopix ingress provider: `Tor egress → Loopix provider`;
+- Loopix provider and mix-layer paths: `Loopix datagram`;
+- Kademlia paths: `Kademlia RPC`;
+- storage paths: `encrypted fragment transfer`.
+
+These labels describe simulation boundaries and must not claim that the entire composed system uses one transport protocol.
 
 ---
 
@@ -917,7 +1068,7 @@ Do not claim forward secrecy for the whole messaging system merely because ephem
 
 # 6. Simulation time, playback and scheduling
 
-## 6.1 Separate clocks
+## 6.1 Separate timing dimensions
 
 The implementation must keep these concepts separate:
 
@@ -928,7 +1079,8 @@ A logical clock used for:
 - polling intervals;
 - timeouts;
 - retry backoff;
-- batch release;
+- Poisson-mix delayed release;
+- network-path transit start/completion;
 - message scheduling;
 - peer last-seen timestamps.
 
@@ -941,6 +1093,14 @@ Initial default: 500 ms.
 The user can change it while the simulation is running. Python applies the new delay before the next step.
 
 Changing playback delay must not change the simulated duration of an outage or timeout.
+
+### Path transit delay
+
+A logical duration owned by each `NetworkPath`. It begins after the source node releases the packet and ends when the target node can receive it. Seeded jitter may vary the duration per transit. This is not a wall-clock sleep and is not the Loopix mix delay.
+
+### Loopix mix delay
+
+A logical duration encoded for a hop according to the Loopix exponential-delay profile. It begins after the mix processes the Sphinx layer and ends when that mix releases the packet onto the next `NetworkPath`.
 
 ## 6.2 Event-driven simulation
 
@@ -955,8 +1115,14 @@ Example event types:
 - `TOR_ENTRY`
 - `TOR_EXIT`
 - `MIX_MESSAGE_RECEIVED`
-- `MIX_BATCH_RELEASED`
-- `ROUTE_SELECTED`
+- `MIX_PACKET_QUEUED`
+- `MIX_PACKET_RELEASED`
+- `MIXNET_ROUTE_CONSTRUCTED`
+- `PATH_TRANSIT_STARTED`
+- `PATH_TRANSIT_COMPLETED`
+- `PATH_TRANSIT_FAILED`
+- `PATH_BLOCKED`
+- `PATH_RESTORED`
 - `FORWARD_ATTEMPT`
 - `FORWARD_TIMEOUT`
 - `FORWARD_ACKNOWLEDGED`
@@ -971,6 +1137,10 @@ Example event types:
 - `MESSAGE_RECONSTRUCTED`
 - `MESSAGE_DECRYPTED`
 - `REPLY_CREATED`
+- `POLLING_ENABLED`
+- `POLLING_DISABLED`
+- `DEVICE_LOG_UPDATED`
+- `ARTEFACT_LINEAGE_UPDATED`
 
 The scheduler processes the next event, publishes it, and waits the configured playback delay before advancing to the next visible step.
 
@@ -1017,24 +1187,30 @@ Avoid adding a large UI component framework unless there is a clear need. Keep t
 
 ## 7.2 Visual design
 
-The interface should look like a serious infrastructure engineering platform or network operations console.
+The interface should look like a precise, modern infrastructure diagram and engineering console on a light canvas.
+
+Use these repository references as visual direction, not pixel-for-pixel layouts:
+
+- [UI style reference](../reference/ui%20style%20reference.png): light background, compact white icon cards, restrained borders/shadows, thin dotted paths, small inline measurements and sparse semantic colour.
+- [Network diagram concept](../reference/concept%20for%20network%20diagram%20stlye.png): clearly separated stage columns, grouped network layers, stable topology and labelled connections. Do not copy its devices, density or exact arrangement.
 
 ### Palette
 
 | Token | Suggested value | Usage |
 |---|---|---|
-| `--bg` | `#17191C` | Main background |
-| `--panel` | `#22262B` | Panels |
-| `--panel-raised` | `#292D32` | Raised cards |
-| `--border` | `#454B53` | Borders/dividers |
-| `--text` | `#E5E7EB` | Primary text |
-| `--muted` | `#9299A2` | Secondary text |
-| `--success` | muted green | Online/success |
-| `--warning` | muted amber | Recovering/timeout warning |
-| `--danger` | muted red | Offline/failure |
-| `--accent` | restrained cool blue/grey | Selection/focus |
+| `--bg` | `#F7F8F6` | Main canvas |
+| `--panel` | `#FFFFFF` | Device/node cards |
+| `--panel-subtle` | `#F1F3F2` | Inspectors and grouped regions |
+| `--border` | `#E2E5E3` | Card and stage boundaries |
+| `--path` | `#C9CECB` | Inactive dotted paths |
+| `--text` | `#171A18` | Primary text |
+| `--muted` | `#737A76` | Secondary text |
+| `--success` | `#22A447` | Available/successful path |
+| `--warning` | `#F06424` | Delayed/retrying path |
+| `--danger` | `#D83A3A` | Blocked/offline/failure |
+| `--accent` | `#4C6FFF` | Selection/focus |
 
-Use status colours sparingly. Most of the interface should be monochrome grey.
+Use status colours sparingly on paths, badges and measurements. Keep the canvas, cards and labels predominantly white, charcoal and soft grey. Cards use modest corner radii, hairline borders and a very soft shadow; avoid glass effects, gradients and heavy elevation.
 
 ### Typography
 
@@ -1060,30 +1236,43 @@ Fields/actions:
 ### B. Simulation configuration
 
 Sections:
-1. Network size.
-2. Participant counts.
+1. Network setup: sender count, receiver count and mixnet node count in one panel.
+2. Receiver polling controls, including the initial enabled state.
 3. Conversation pairing.
-4. Message/exchange count.
+4. Message/exchange count from 1–10.
 5. Node failure configuration.
 6. Playback delay.
 7. Random seed / reproducibility.
+8. Protocol parameters, with fixed reference defaults and visibly labelled experimental overrides.
+
+After **Create simulation** and after **Reset**, replace the setup form's message summary with per-sender editable staged-message fields while retaining a route back to network configuration. **Run** remains disabled until Python validates and accepts the staged message plan.
 
 ### C. Network topology
 
 Main visual area showing:
-- people;
+- participant device cards with compact message logs;
 - each person's Tor object;
 - mixnet manager/network boundary if useful;
+- Loopix ingress and egress providers;
 - individual mixnet nodes;
 - DHT nodes;
 - storage nodes;
 - connections known to the selected view;
 - actual selected message route;
+- active message markers held at nodes or travelling on paths;
 - offline/recovering states.
 
-Use D3 to calculate/maintain graph layout. Use SVG for nodes and edges.
+Arrange the topology in stable left-to-right stage columns. The baseline sequence is participant device, Tor abstraction, Loopix ingress provider, ordered Loopix mix layers, Loopix egress provider, Kademlia/DHT lookup, encrypted storage vault and recipient device. The actual Python topology may add or omit columns, but stage order must remain explicit.
 
-The graph must not imply that every possible network link exists. Display known/observed links according to Python topology and routing-table data.
+Use an upper forward lane for sender-to-recipient traffic. Use a lower reply lane for recipient-to-sender traffic. Reply lines enter from the lower-right and curve back through the same node instances; never render duplicate node cards solely for the reply journey.
+
+Use D3 to calculate and maintain constrained graph layout. Use SVG for nodes, edges, labels and route animation.
+
+The graph must distinguish configured protocol topology from observed traffic. For Loopix, display the ordered layers and adjacency between consecutive layers. For Kademlia, display contacts known through each selected node's local `k`-buckets. Do not invent links in the web client.
+
+The connection between a participant device and its Tor boundary may use the requested TCP-style illustrated line, but label it `local/TCP abstraction`. Tor egress connects to the Loopix ingress `ProviderNode`; the provider is the mixnet ingestion point. Do not label a first-layer mix node as the ingestion provider.
+
+Provide direct graph controls for **Block route**, **Restore route**, **Disable polling** and **Enable polling**. Controls dispatch typed commands to Python and show pending, applied or rejected state.
 
 ### D. Node inspector
 
@@ -1096,24 +1285,38 @@ When a node is selected, show:
 - uptime/outage history;
 - last state transition;
 - inbound/outbound queue counts;
-- current batch state if a mix node;
+- current delayed-packet queue and Poisson-mix parameters if a mix node;
 - failure count;
 - last activity;
-- routing table tab;
+- protocol-state tab;
+- active/inbound path transits;
+- safe cryptographic artefact-lineage tab;
 - event history tab.
 
-### E. Routing-table inspector
+### E. Protocol-state and algorithm inspector
 
-For a selected mixnet node, show:
+For a selected Loopix mix node, show:
 - peer ID;
 - simulated address;
+- local layer and peer layer;
 - last seen;
 - observed status;
 - consecutive failures;
 - success count;
 - last failure;
-- routing eligibility;
+- configured adjacency;
 - selection/highlight action.
+
+For a selected Kademlia node, show its 160-bit node ID, bucket ranges, least-to-most-recent contact order, XOR distances, active lookup shortlist, queried/responded state and `k`/`alpha` parameters.
+
+The inspector must always show:
+
+- exact algorithm name;
+- reference paper and publication year;
+- implementation profile/version;
+- active parameters;
+- which operations are exact state-machine simulations and which lower-level transport or cryptographic operations are abstracted;
+- a link from the displayed algorithm identifier to the bundled reference metadata.
 
 Selecting a peer highlights it in the graph.
 
@@ -1152,8 +1355,23 @@ Filters:
 - Stop
 - Reset
 - Playback delay slider
+- Enable/disable polling globally or for the selected receiver
+- Block/restore the selected path or stage boundary
 
 The delay slider should remain available during execution.
+
+### H. Participant device cards and logs
+
+Each person is rendered as a device-style card at the relevant outer edge of the diagram. The card shows display name, role, key fingerprint, polling state and a compact scrollable conversation log.
+
+Log rows use the participant's perspective:
+
+```text
+SEND   11:23 pm   Hi Bob, how are you?
+REPLY  11:40 pm   Lorem ipsum dolor
+```
+
+Use logical simulation timestamps formatted for humans, with the precise logical value available in details. Do not expose another participant's plaintext until the selected device has legitimately received and decrypted it.
 
 ---
 
@@ -1163,11 +1381,13 @@ The delay slider should remain available during execution.
 
 Python supplies authoritative graph data:
 - nodes;
-- edges/known peer relationships;
+- configured topology edges and locally known Kademlia contacts;
 - node types;
 - node states;
 - route events;
-- routing-table updates.
+- protocol-state updates;
+- `NetworkPath` state and transit events;
+- safe artefact-lineage state.
 
 D3 may calculate visual positions and force layout. It must not create authoritative network relationships or make routing decisions.
 
@@ -1176,6 +1396,7 @@ D3 may calculate visual positions and force layout. It must not create authorita
 Use distinct but restrained visual treatments for:
 - Person
 - TorNetwork
+- ProviderNode
 - MixNode
 - DHTNode
 - StorageNode
@@ -1187,18 +1408,39 @@ Each node should have:
 - selected state;
 - hover state.
 
-## 8.3 Edge visual treatment
+## 8.3 Column and lane layout physics
+
+Use D3 forces as constrained layout assistance, not as an unconstrained force-directed graph:
+
+- assign every node a stable `stage_index` from Python topology metadata;
+- use a strong `forceX` target for the centre of its protocol-stage column;
+- use `forceY` bands for the forward/upper and reply/lower route lanes while keeping one shared node position;
+- use collision radii derived from measured card dimensions plus minimum whitespace;
+- use link force only to improve local spacing within a stage or between adjacent stages, never to reorder columns;
+- apply cluster separation for multiple mix nodes within the same Loopix layer and multiple DHT/storage nodes within their columns;
+- retain positions across incremental updates and use low-alpha reheating to avoid disruptive jumps;
+- route reply edges as lower cubic Bézier paths that rise from the bottom-right and return through the existing nodes;
+- route forward edges from the upper-left across the upper lane;
+- allow responsive horizontal scrolling or zoom before collapsing stage order.
+
+Tune and test collision strength, link distance, charge strength, alpha decay and column gap against the expected 10–20 mix-node range. The result should have clear edges, even whitespace, readable labels and minimal crossings, informed by the diagram reference without copying it.
+
+## 8.4 Edge visual treatment
 
 Edges should distinguish:
 - configured/known peer connection;
 - currently selected route;
 - attempted route;
 - failed route;
-- unavailable/stale connection.
+- unavailable/stale connection;
+- blocked connection;
+- active in-transit message.
 
 Do not draw all nodes as fully connected unless the topology data says so.
 
-## 8.4 Route animation
+Use thin dotted neutral lines for inactive paths, green for successful/available flow, orange for delayed/retrying flow and red for blocked/failed flow. Show compact labels for transport type, transit delay and current state where space permits.
+
+## 8.5 Route animation
 
 When Python emits a forwarding event:
 - highlight the source node;
@@ -1208,14 +1450,16 @@ When Python emits a forwarding event:
 - update the event timeline;
 - preserve the route history for inspection.
 
+On `path_transit_started`, keep the marker between nodes until `path_transit_completed` or `path_transit_failed`. The start event includes logical start/completion times and the path delay. Pause freezes the marker; stepping and playback changes must not alter the underlying logical completion time.
+
 On failure:
 - mark the attempted edge as failed;
 - show timeout/rejection;
-- then animate the retry route when Python selects it.
+- then animate the new independently source-routed packet attempt when Python constructs it.
 
 The animation is a visual representation of Python events, not a second route simulation.
 
-## 8.5 Performance
+## 8.6 Performance
 
 - Avoid rerendering the entire graph for every event.
 - Apply incremental node/edge/state updates.
@@ -1235,10 +1479,13 @@ The following endpoint names are proposed and may be refined during implementati
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/health` | Backend health and version |
-| GET | `/api/info` | Runtime info, selected port, capabilities |
+| GET | `/api/info` | Runtime info, selected port, capabilities and protocol registry |
 | POST | `/api/simulations` | Create simulation from config |
 | GET | `/api/simulations/{id}` | Read simulation metadata/state |
 | GET | `/api/simulations/{id}/topology` | Current topology snapshot |
+| PUT | `/api/simulations/{id}/messages` | Validate and replace staged pre-run messages |
+| GET | `/api/simulations/{id}/device-logs` | Read participant device logs |
+| GET | `/api/simulations/{id}/lineage` | Read safe cryptographic artefact lineage |
 | POST | `/api/simulations/{id}/run` | Start/resume execution |
 | POST | `/api/simulations/{id}/pause` | Pause |
 | POST | `/api/simulations/{id}/step` | Execute one step |
@@ -1268,8 +1515,16 @@ The WebSocket supports commands from frontend to Python and events from Python t
 - `set_playback_delay`
 - `request_topology`
 - `request_node_details`
-- `request_routing_table`
+- `request_protocol_state`
 - `set_node_availability` (manual test control)
+- `set_polling_enabled`
+- `block_network_path`
+- `restore_network_path`
+- `block_stage_boundary`
+- `restore_stage_boundary`
+- `set_staged_messages`
+- `request_device_logs`
+- `request_artefact_lineage`
 - `ping`
 
 Every command should include a command ID and simulation ID when relevant.
@@ -1287,13 +1542,23 @@ Every command should include a command ID and simulation ID when relevant.
 - `topology_snapshot`
 - `node_created`
 - `node_status_changed`
-- `routing_table_updated`
-- `routing_decision`
+- `network_path_blocked`
+- `network_path_restored`
+- `path_transit_started`
+- `path_transit_completed`
+- `path_transit_failed`
+- `mixnet_adjacency_updated`
+- `mixnet_route_constructed`
+- `sphinx_layer_processed`
 - `message_forward_attempt`
 - `message_forward_failed`
 - `message_forward_succeeded`
-- `mix_batch_received`
-- `mix_batch_released`
+- `mix_packet_queued`
+- `mix_packet_released`
+- `cover_packet_generated`
+- `kademlia_bucket_updated`
+- `kademlia_rpc_sent`
+- `kademlia_rpc_received`
 - `dht_lookup_started`
 - `dht_lookup_completed`
 - `fragment_stored`
@@ -1302,8 +1567,13 @@ Every command should include a command ID and simulation ID when relevant.
 - `bob_poll_started`
 - `bob_poll_empty`
 - `bob_poll_message_found`
+- `receiver_polling_enabled`
+- `receiver_polling_disabled`
 - `message_reconstructed`
 - `message_decrypted`
+- `staged_messages_updated`
+- `device_log_updated`
+- `artefact_lineage_updated`
 - `playback_delay_updated`
 - `simulation_error`
 
@@ -1314,19 +1584,19 @@ Use a consistent event envelope:
 ```json
 {
   "event_id": "evt-000001",
-  "event_type": "routing_decision",
+  "event_type": "mixnet_route_constructed",
   "simulation_id": "sim-000001",
   "sequence": 42,
   "simulation_time_ms": 12500,
-  "source_id": "mix-node-a",
-  "target_id": "mix-node-c",
+  "source_id": "person-alice",
+  "target_id": "provider-bob",
   "message_id": "msg-000001",
   "conversation_id": "conv-000001",
   "payload": {
-    "candidate_peer_ids": ["mix-node-b", "mix-node-c"],
-    "excluded_peer_ids": ["mix-node-d"],
-    "selected_peer_id": "mix-node-c",
-    "selection_reason": "eligible_random_candidate"
+    "algorithm": "loopix-usenix-2017",
+    "ordered_route": ["provider-a", "mix-l1-b", "mix-l2-c", "mix-l3-a", "provider-b"],
+    "selected_by_layer": {"1": "mix-l1-b", "2": "mix-l2-c", "3": "mix-l3-a"},
+    "mu_per_second": 1.0
   }
 }
 ```
@@ -1353,28 +1623,48 @@ Use a typed configuration model. Suggested shape:
 {
   "network": {
     "mixnet": {
+      "algorithm": "loopix-usenix-2017",
       "min_nodes": 10,
       "max_nodes": 20,
-      "randomize_count": true
+      "randomize_count": true,
+      "layer_count": 3,
+      "mu_per_second": 1.0,
+      "payload_rate_per_minute": 3.0,
+      "client_loop_rate_per_minute": 1.0,
+      "drop_cover_rate_per_minute": 1.0,
+      "mix_loop_rate_per_minute": 1.0
     },
     "dht": {
-      "node_count": 8
+      "algorithm": "kademlia-2002",
+      "node_count": 8,
+      "id_bits": 160,
+      "k": 20,
+      "alpha": 3
     },
     "storage": {
       "node_count": 12,
       "replication_factor": 2
+    },
+    "paths": {
+      "base_transit_delay_ms": 250,
+      "jitter_min_ms": 0,
+      "jitter_max_ms": 150
     }
   },
   "participants": {
     "sender_count": 3,
-    "receiver_count": 1
+    "receiver_count": 1,
+    "receiver_polling_enabled": true
   },
   "conversations": {
     "pairing_strategy": "all_to_one",
     "exchanges_per_conversation": 5
   },
   "messages": {
-    "payload_size_bytes": 512
+    "payload_size_bytes": 512,
+    "default_source": "lorem_ipsum",
+    "generated_word_count_min": 3,
+    "generated_word_count_max": 10
   },
   "availability": {
     "pattern": "random",
@@ -1385,9 +1675,8 @@ Use a typed configuration model. Suggested shape:
     "always_offline_probability": 0.02,
     "always_online_probability": 0.05
   },
-  "routing": {
-    "max_hops": 12,
-    "max_retries_per_hop": 2,
+  "delivery": {
+    "max_end_to_end_retries": 2,
     "ack_timeout_ms": 1000
   },
   "playback": {
@@ -1397,7 +1686,7 @@ Use a typed configuration model. Suggested shape:
 }
 ```
 
-This is a proposed initial schema. Validate ranges and make all defaults visible in the UI. The exact DHT/storage node counts can be configurable even if the first UI uses sensible defaults.
+Validate ranges and make all defaults visible in the UI. Reference-profile parameters are fixed by default. Any experimental override must be visibly marked as a deviation in configuration, API metadata, events and the UI; it must never be presented as the unmodified reference algorithm.
 
 The number of senders and receivers is the number of `Person` instances created. The pairing strategy defines which people communicate.
 
@@ -1417,17 +1706,16 @@ Do not silently assume all senders talk to all receivers.
 Use a monorepo-style local project:
 
 ```text
-distributed-messaging-simulator/
+trustless-mixnet-dht-messaging-simulator/
 ├── README.md
 ├── AGENTS.md
 ├── docs/
 ├── .agents/
 │   └── instructions/
 │       └── distributed-messaging-simulator-implementation.md
-├── pyproject.toml
-├── package.json
 ├── .gitignore
-├── backend/
+├── python/
+│   ├── pyproject.toml
 │   ├── main.py
 │   ├── app/
 │   │   ├── __init__.py
@@ -1443,10 +1731,12 @@ distributed-messaging-simulator/
 │   │   │   ├── tor_network.py
 │   │   │   ├── mixnet.py
 │   │   │   ├── mix_node.py
+│   │   │   ├── provider_node.py
 │   │   │   ├── dht_network.py
 │   │   │   ├── dht_node.py
 │   │   │   ├── storage_network.py
 │   │   │   ├── storage_node.py
+│   │   │   ├── network_path.py
 │   │   │   ├── fragment.py
 │   │   │   ├── manifest.py
 │   │   │   └── conversation.py
@@ -1457,13 +1747,17 @@ distributed-messaging-simulator/
 │   │   │   ├── event_bus.py
 │   │   │   ├── playback.py
 │   │   │   ├── availability.py
-│   │   │   ├── routing.py
-│   │   │   ├── peer_discovery.py
+│   │   │   ├── path_transit.py
+│   │   │   ├── loopix_routing.py
+│   │   │   ├── kademlia.py
+│   │   │   ├── poisson_process.py
 │   │   │   ├── global_observer.py
+│   │   │   ├── protocol_registry.py
 │   │   │   └── topology.py
 │   │   ├── crypto/
 │   │   │   ├── key_manager.py
 │   │   │   ├── encryption.py
+│   │   │   ├── sphinx.py
 │   │   │   └── serialization.py
 │   │   ├── schemas/
 │   │   │   ├── config.py
@@ -1477,7 +1771,7 @@ distributed-messaging-simulator/
 │       ├── unit/
 │       ├── integration/
 │       └── fixtures/
-└── frontend/
+└── web/
     ├── package.json
     ├── svelte.config.js
     ├── vite.config.ts
@@ -1492,9 +1786,14 @@ distributed-messaging-simulator/
         │   ├── components/
         │   │   ├── ConnectionPanel.svelte
         │   │   ├── SimulationConfig.svelte
+        │   │   ├── MessagePlanEditor.svelte
         │   │   ├── NetworkGraph.svelte
+        │   │   ├── ParticipantDevice.svelte
+        │   │   ├── DeviceMessageLog.svelte
         │   │   ├── NodeInspector.svelte
-        │   │   ├── RoutingTable.svelte
+        │   │   ├── ProtocolInspector.svelte
+        │   │   ├── ArtefactLineage.svelte
+        │   │   ├── RouteControls.svelte
         │   │   ├── EventTimeline.svelte
         │   │   └── PlaybackControls.svelte
         │   ├── d3/
@@ -1504,6 +1803,8 @@ distributed-messaging-simulator/
         │   ├── stores/
         │   │   ├── connection.ts
         │   │   ├── simulation.ts
+        │   │   ├── messages.ts
+        │   │   ├── lineage.ts
         │   │   ├── topology.ts
         │   │   └── events.ts
         │   ├── types/
@@ -1521,6 +1822,8 @@ The exact file structure may change if the implementation framework conventions 
 
 # 12. Testing strategy
 
+Implementation is iterative: write the smallest focused test for a logical behaviour, implement it, run that test, inspect its expected output, then run the affected integration tests before continuing. Do not generate a phase's code first and add tests afterwards.
+
 ## 12.1 Python unit tests
 
 Test at minimum:
@@ -1535,18 +1838,24 @@ Test at minimum:
 ### Mixnet
 - Mixnet creates the configured number of nodes.
 - Each node has a unique ID.
-- Each node has an independent routing table.
-- Nodes do not automatically receive complete network knowledge.
-- Peer discovery updates local routing tables.
-- A node can select a known eligible peer.
-- An offline peer causes a timeout/failure event.
-- The node retries using a different eligible peer.
-- Retry limits are respected.
-- Routing loops are bounded.
+- Providers and mix nodes form the exact configured Loopix stratified topology.
+- Every packet independently samples one node from each layer.
+- Each hop delay is independently sampled from the configured exponential distribution.
+- A mix unwraps one Sphinx layer, checks integrity/replay state and follows the encoded next hop.
+- Client payload, loop and drop-cover traffic follow their configured Poisson processes.
+- Mix loop traffic follows its configured Poisson process.
+- A failed hop terminates the packet attempt; an application retry creates a fresh route.
+- Fixed-size polling responses are padded with dummy messages when required.
+- Deterministic test fixtures validate route, delay and traffic generation against reference equations.
 
 ### DHT
 - DHT nodes have unique IDs.
-- XOR distance is calculated correctly.
+- Node IDs and keys are exactly 160 bits.
+- XOR distance is calculated against reference vectors.
+- `k = 20` bucket ordering, splitting and ping-before-eviction match Kademlia 2002.
+- `PING`, `STORE`, `FIND_NODE` and `FIND_VALUE` match the defined RPC semantics.
+- Parallel lookup uses `alpha = 3` and terminates according to the reference algorithm.
+- Join, refresh, caching, storage and republishing transitions match the reference algorithm in simulation time.
 - DHT routing is separate from mixnet routing.
 - Lookup can fail when nodes are unavailable.
 - Records can be stored and retrieved.
@@ -1570,6 +1879,15 @@ Test at minimum:
 - Recovery makes a node eligible again.
 - Playback delay changes do not change logical outage duration.
 
+### Network paths and interventions
+- Every topology edge resolves to a `NetworkPath` object.
+- Transit start and completion are separated by the configured logical path delay.
+- Path delay, Loopix mix delay and playback delay remain independent.
+- A marker can remain in transit across multiple rendered frames without the web client inventing state.
+- Blocking a path prevents new transits.
+- Existing transits complete by default; `drop_in_flight` produces the documented failure event.
+- Blocking/restoring a stage boundary updates exactly the Python-owned paths crossing that boundary.
+
 ### Scheduler/playback
 - Every scheduled network action is a `SimulationStep` object with stable identity and typed execution state.
 - Step execution emits events without conflating the step object with those event records.
@@ -1589,6 +1907,16 @@ Test at minimum:
 - Private keys are not included in event payloads or API responses.
 - Sender reply public key is recoverable only after decrypting the payload.
 - Tests do not claim sender authentication from the embedded reply key.
+- Lineage shows the reply key as encrypted content through DHT/storage and reveals it only after Bob decrypts.
+
+### Messages, polling and device logs
+- Generated default messages contain 3–10 words from the bundled Lorem ipsum corpus.
+- The same seed produces the same default message plan.
+- Pre-run edits replace Python's staged plan and edits are rejected after run starts.
+- One to ten exchanges produce the expected sender/reply transmission counts.
+- Disabling polling leaves messages stored and prevents retrieval/reply generation.
+- Re-enabling polling permits later retrieval.
+- Device logs use correct direction, logical timestamp, state and participant-visible plaintext.
 
 ## 12.2 API and integration tests
 
@@ -1597,12 +1925,17 @@ Test at minimum:
 - Startup prints the actual bound port.
 - Create simulation validates input.
 - Create simulation returns generated topology.
+- Create simulation returns `NetworkPath` objects and staged messages.
 - Create simulation does not start message traffic.
+- Staged-message update and reset behaviour work.
 - Run starts the scheduler.
 - Pause/resume/step/stop work.
 - WebSocket receives events.
 - Playback-delay command updates the backend.
 - Manual node availability commands work.
+- Polling enable/disable commands work during execution.
+- Path and stage-boundary block/restore commands work during execution.
+- Device-log and lineage endpoints return only authorised safe state.
 - Invalid commands return useful errors.
 - Reconnect can resynchronise from current state.
 
@@ -1614,13 +1947,21 @@ Test at minimum:
 - Health-check failure is displayed.
 - WebSocket connection status updates.
 - Configuration sliders enforce limits.
+- Sender, receiver and mixnet-node counts share the network setup panel.
 - Create simulation sends the expected configuration.
+- Staged generated messages render and edits are accepted before run.
 - Topology renders only from backend data.
+- Stage columns remain ordered and node cards do not overlap at 10 and 20 mix nodes.
+- Reply routes reuse the same node cards and render in the lower lane from right to left.
+- Path transit markers remain between endpoints until completion events.
 - Selecting a node opens the correct inspector.
-- Routing table updates when backend sends updates.
+- Protocol-state updates render when Python sends them.
 - Route events animate the actual selected route.
 - Offline/recovery events update node status.
 - Playback slider sends updates to Python.
+- Polling and path controls show pending/applied/rejected command state.
+- Participant device logs show direction, formatted time and message text.
+- Key/manifest/fragment lineage never exposes private keys or premature plaintext reply keys.
 - UI remains responsive during event streaming.
 
 ## 12.4 End-to-end acceptance scenario
@@ -1635,30 +1976,40 @@ Use a reproducible configuration:
 - deterministic seed
 - one mix node configured to fail during the run
 - one short outage and one long outage
+- receiver polling initially disabled, then enabled during the run
+- one path blocked and restored during the run
+- edited staged text for at least one sender
 
 Expected result:
 
 1. Python creates three sender `Person` instances and one receiver `Person` instance.
 2. Each person gets an independent Tor abstraction.
 3. Python generates the mixnet, DHT and storage nodes.
-4. The UI renders the returned topology.
+4. The UI renders the returned topology in ordered stage columns with forward and reply lanes.
 5. Three conversations are created between the senders and the receiver, according to the configured pairing.
 6. Messages are encrypted and sent through the simulated Tor/mixnet path.
-7. Mix nodes make and publish routing decisions.
+7. Python constructs an independent Loopix source route for every packet; mix nodes process their encoded Sphinx layer and delay.
 8. At least one route attempt encounters an unavailable/unresponsive peer.
-9. The sending node retries through another eligible peer, if one exists.
+9. The sender performs a bounded end-to-end retry using a fresh packet and independently sampled source route.
 10. Bob polls for available messages.
 11. Bob retrieves the required encrypted fragments.
 12. Bob reconstructs and decrypts messages.
 13. Replies can be sent using the sender reply public key included in the encrypted content.
-14. The UI shows all relevant events, route changes, node states and routing-table updates.
+14. The UI shows all relevant events, route changes, node states, protocol-state updates and exact algorithm metadata.
 15. The same simulation seed reproduces the same non-cryptographic network/failure decisions.
+16. Path markers visibly remain in transit for their path delay, independently of mix and playback delays.
+17. The blocked path is visibly unavailable, affects delivery, and becomes eligible after restoration.
+18. Bob retrieves nothing while polling is disabled and resumes retrieval after it is enabled.
+19. Device cards show timestamped send/reply logs, including the edited message.
+20. The lineage view shows the encrypted reply-key relationship without exposing it in DHT/storage plaintext.
 
 ---
 
 # 13. Implementation phases and task order
 
 Implement in this order. Do not start with the D3 UI.
+
+Within every phase, treat each checklist item as a testable increment: write or update focused tests, implement the item, run those tests, inspect expected output and only then continue. Run the affected integration suite at each phase exit.
 
 ## Phase 1 — Project foundation
 
@@ -1691,31 +2042,34 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement `TorNetwork`.
 - [ ] Implement `Mixnet`.
 - [ ] Implement `MixNode`.
+- [ ] Implement Loopix `ProviderNode`.
 - [ ] Implement `DHTNetwork` and `DHTNode`.
 - [ ] Implement `StorageNetwork` and `StorageNode`.
+- [ ] Implement `NetworkPath` and its typed DTO.
 - [ ] Implement `Fragment` and `MessageManifest`.
 - [ ] Implement `Conversation`.
 - [ ] Implement the `SimulationStep` base contract and typed concrete network-step objects.
 - [ ] Implement one inert `GlobalObserver` owned by each simulation.
+- [ ] Implement participant staged-message and device-log state.
 - [ ] Implement explicit DTO/topology serialisation.
 - [ ] Test object identity, ownership and uniqueness.
 
 **Exit criteria:** Python can generate a complete object graph from a configuration without running message traffic.
 
-## Phase 4 — Peer discovery and routing
+## Phase 4 — Loopix topology and routing
 
-- [ ] Implement mixnet bootstrap peer configuration.
-- [ ] Implement local peer discovery.
-- [ ] Implement per-node routing tables.
-- [ ] Implement peer observations and stale status.
-- [ ] Implement candidate filtering.
-- [ ] Implement next-hop selection.
-- [ ] Implement bounded retries and timeout outcomes.
-- [ ] Implement hop limits and loop prevention.
-- [ ] Emit detailed routing-decision events.
-- [ ] Test route selection and failure recovery.
+- [ ] Implement providers and ordered mix layers.
+- [ ] Implement complete adjacency between consecutive layers.
+- [ ] Implement independent per-packet source-route sampling.
+- [ ] Implement reference-compatible Sphinx packet construction, processing, integrity checks and replay tags using a maintained implementation.
+- [ ] Implement source-selected exponential per-hop delays.
+- [ ] Implement payload, client loop, drop-cover and mix loop Poisson processes.
+- [ ] Implement fixed-size provider polling responses with dummy padding.
+- [ ] Implement packet failure and bounded end-to-end retry with a fresh route.
+- [ ] Emit detailed route-construction and packet-processing events.
+- [ ] Test the state machine and distributions against the Loopix 2017 reference.
 
-**Exit criteria:** each node has local knowledge and can route/retry without a global route decision being made by JavaScript.
+**Exit criteria:** the Python engine faithfully simulates the selected Loopix profile and the web client only visualises its topology, parameters and events.
 
 ## Phase 5 — Availability and scheduler
 
@@ -1725,17 +2079,21 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement deterministic event scheduler.
 - [ ] Queue and execute `SimulationStep` objects rather than anonymous callbacks or untyped step dictionaries.
 - [ ] Implement simulation clock.
+- [ ] Implement path-transit steps with independent logical transit delay and seeded jitter.
 - [ ] Implement separate playback delay controller.
 - [ ] Implement pause/resume/step/stop.
 - [ ] Implement manual availability controls.
+- [ ] Implement path/stage-boundary block and restore controls, including documented in-flight behaviour.
 - [ ] Test reproducibility and timing separation.
 
 **Exit criteria:** nodes change state during a simulation and routing reacts to those changes.
 
 ## Phase 6 — DHT and storage
 
-- [ ] Implement Kademlia-inspired DHT node IDs and XOR distance.
-- [ ] Implement DHT routing tables and lookup.
+- [ ] Implement Kademlia 2002 160-bit node IDs and XOR distance.
+- [ ] Implement `k = 20` buckets with reference splitting, ordering and eviction behaviour.
+- [ ] Implement the four Kademlia RPCs and `alpha = 3` parallel lookup.
+- [ ] Implement reference join, refresh, caching, storage and republishing behaviour.
 - [ ] Implement opaque mailbox/manifest lookup identifiers.
 - [ ] Implement encrypted payload chunking.
 - [ ] Implement fragment placement and replication.
@@ -1755,7 +2113,8 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement Bob public-key publication/retrieval abstraction.
 - [ ] Implement ephemeral sender key material.
 - [ ] Include sender reply public key in encrypted content.
-- [ ] Ensure private keys never leave the Python backend.
+- [ ] Emit safe key, manifest and fragment lineage without exposing private material.
+- [ ] Ensure private keys never leave the Python engine.
 - [ ] Test successful and failed decryption.
 - [ ] Document sender-authentication limitation.
 
@@ -1767,10 +2126,14 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement pairing strategies.
 - [ ] Generate conversation IDs.
 - [ ] Generate message IDs.
-- [ ] Implement configurable exchanges.
+- [ ] Implement 1–10 configurable exchanges.
+- [ ] Generate deterministic 3–10-word Lorem ipsum defaults.
+- [ ] Implement pre-run staged-message editing and reset-to-editable behaviour.
 - [ ] Implement Bob/client polling.
+- [ ] Implement runtime polling enable/disable state.
 - [ ] Ensure no unsolicited push notification is delivered to Bob.
 - [ ] Implement reply flow.
+- [ ] Implement timestamped per-device message logs.
 - [ ] Test multiple senders communicating with one receiver.
 - [ ] Test multiple receivers and pairing strategies.
 
@@ -1787,20 +2150,23 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement current-state/topology resynchronisation.
 - [ ] Implement playback-delay updates.
 - [ ] Implement manual node availability commands.
+- [ ] Implement staged-message, polling, path-blocking, device-log and lineage commands/endpoints.
 - [ ] Test disconnect/reconnect.
 
 **Exit criteria:** a non-visual client can create and control a simulation and receive all events.
 
 ## Phase 10 — SvelteKit connection and configuration UI
 
-- [ ] Build technical grey design tokens.
+- [ ] Build the light infrastructure-diagram design tokens derived from the visual reference.
 - [ ] Build initial backend connection screen.
 - [ ] Accept port or full local endpoint.
 - [ ] Derive HTTP and WebSocket URLs.
 - [ ] Implement health check.
 - [ ] Implement WebSocket connect/disconnect/reconnect.
 - [ ] Display backend/API status.
-- [ ] Build network/participant/conversation configuration form.
+- [ ] Build the network setup panel with sender, receiver and mixnet-node counts together.
+- [ ] Build polling defaults and 1–10 exchange controls.
+- [ ] Build the post-create/reset staged-message editor.
 - [ ] Build failure configuration controls.
 - [ ] Build playback delay slider.
 - [ ] Create simulation through HTTP.
@@ -1811,25 +2177,32 @@ Implement in this order. Do not start with the D3 UI.
 ## Phase 11 — D3 topology and inspectors
 
 - [ ] Build D3 graph layout.
+- [ ] Implement stable protocol-stage columns with strong `forceX` constraints.
+- [ ] Implement collision, cluster spacing, stable incremental positions and responsive zoom/scroll.
+- [ ] Implement upper forward and lower reply lanes without duplicate node cards.
 - [ ] Render backend-supplied nodes and edges.
 - [ ] Add zoom and pan.
 - [ ] Add node selection.
 - [ ] Build node inspector.
-- [ ] Build routing-table inspector.
+- [ ] Build protocol-state and algorithm inspector.
 - [ ] Highlight selected peers and links.
 - [ ] Apply incremental topology updates.
-- [ ] Test graph responsiveness.
+- [ ] Render participant device cards and message logs.
+- [ ] Test layout legibility and responsiveness with 10 and 20 mix nodes.
 
-**Exit criteria:** the user can inspect the generated network and each node's current local peer knowledge.
+**Exit criteria:** the user can inspect the generated network, each node's protocol state and the exact algorithm profile and parameters in use.
 
 ## Phase 12 — Live routes, event timeline and final integration
 
 - [ ] Animate actual Python-selected routes.
+- [ ] Animate path transits for the Python-owned logical transit duration.
 - [ ] Show attempted/failed/successful hops.
-- [ ] Show retry route.
-- [ ] Show batch receive/release events.
+- [ ] Show each independently source-routed retry packet.
+- [ ] Show Poisson-mix queued/released packet and cover-traffic events.
 - [ ] Show node availability transitions.
 - [ ] Show Bob polling and retrieval.
+- [ ] Add runtime polling toggles and path/stage block/restore controls.
+- [ ] Show encrypted reply-key, manifest and fragment lineage.
 - [ ] Show DHT lookup and fragment placement/retrieval.
 - [ ] Add event filters and detail panels.
 - [ ] Add playback controls and live delay changes.
@@ -1848,7 +2221,7 @@ Implement in this order. Do not start with the D3 UI.
 From the repository root, use the documented Python environment/entry point. The intended command is:
 
 ```bash
-python backend/main.py
+python python/main.py
 ```
 
 The implementation may use a package entry point, but the README must provide one simple command.
@@ -1860,7 +2233,7 @@ Python prints the actual selected port.
 In a second terminal:
 
 ```bash
-cd frontend
+cd web
 npm install
 npm run dev
 ```
@@ -1878,6 +2251,7 @@ Open the URL printed by Vite, normally:
 - Configure the simulation.
 - Press **Create simulation**.
 - Inspect the generated topology.
+- Edit or accept each sender's staged messages.
 - Press **Run**.
 
 The backend and frontend must be independently restartable. Restarting the frontend must not automatically destroy a still-running Python simulation. Reconnecting should request current state.
@@ -1896,16 +2270,16 @@ The backend and frontend must be independently restartable. Restarting the front
 
 # 15. Open protocol decisions — do not silently invent answers
 
-These decisions should remain explicit and be isolated behind interfaces until the user approves a protocol choice.
+These decisions should remain explicit and be isolated behind interfaces until the user approves a protocol choice. Loopix 2017 and Kademlia 2002 are selected reference algorithms, not open choices.
 
-1. **Mixnet routing protocol:** the MVP uses local peer discovery and a documented selection policy. A production mixnet routing protocol has not been selected.
-2. **Mixing policy:** batch size, minimum batch wait, cover traffic, dummy messages and release conditions require protocol decisions. The MVP should expose configurable simple batch/shuffle behaviour without claiming formal mixnet security.
+1. **Loopix-to-storage boundary:** define how the egress provider hands an opaque application packet into the custom DHT/storage subsystem without implying that subsystem is part of Loopix.
+2. **Sphinx implementation:** select and pin a maintained, reference-compatible implementation. Do not implement cryptographic primitives manually or claim complete Loopix fidelity while Sphinx is stubbed.
 3. **DHT privacy:** exact mailbox lookup-key construction and protection against metadata correlation require a separate design.
 4. **Manifest confidentiality:** decide precisely which manifest fields are public, opaque or encrypted. Do not assume every field is hidden merely because the message payload is encrypted.
 5. **Storage redundancy:** the MVP may use replication. Erasure coding is not implied and must not be claimed unless implemented.
 6. **Sender authentication:** the embedded sender reply public key permits replies but does not authenticate the sender. No signature prerequisite is to be added to the MVP without approval.
-7. **Replay protection:** define message nonce/ID handling and duplicate suppression.
-8. **Polling cadence:** initial default and whether it is fixed, randomised or jittered need a configuration choice.
+7. **Application replay protection:** Sphinx replay-tag handling protects the mix packet layer; separately define message nonce/ID handling and recipient duplicate suppression.
+8. **Polling profile:** Loopix uses fixed-frequency polling and fixed-size padded responses. Select the profile parameters without changing that behaviour silently.
 9. **Adversary model:** the observer views and attacker controls need explicit capabilities. Do not claim global traffic-analysis resistance from this simulator.
 10. **Node operator model:** operators may own one or more nodes. Independence should be configurable so the simulator can model correlated failures or collusion later.
 
@@ -1920,21 +2294,32 @@ The first complete implementation is done when:
 - [ ] The frontend accepts the backend port/endpoint and connects successfully.
 - [ ] The user can configure 1–10 senders and 1–10 receivers.
 - [ ] The user can configure 10–20 mixnet nodes.
-- [ ] The user can configure conversation pairing and message exchanges.
+- [ ] Sender, receiver and mixnet-node counts appear together in the network setup panel.
+- [ ] The user can configure conversation pairing and 1–10 message exchanges.
 - [ ] Python creates all people and network objects.
 - [ ] Every person has an independent Tor abstraction.
-- [ ] Mixnet nodes have independent local routing tables.
-- [ ] DHT nodes implement a separate Kademlia-inspired lookup model.
+- [ ] Providers and mix nodes implement the selected Loopix 2017 profile, including stratified source routing, Sphinx processing, Poisson mixing and cover traffic.
+- [ ] DHT nodes implement the original Kademlia 2002 algorithm with the declared parameters.
 - [ ] Storage nodes hold encrypted fragments.
+- [ ] Every traversable connection is a `NetworkPath` with independent logical transit delay and block state.
 - [ ] Nodes randomly go offline and recover for configurable periods.
-- [ ] Simulation time and playback delay are separate.
+- [ ] Path transit delay, Loopix mix delay, outage duration and playback delay remain separate.
 - [ ] The frontend can change playback delay while the simulation runs.
-- [ ] Python makes routing decisions and emits them to the frontend.
+- [ ] Python constructs Loopix source routes, executes Kademlia lookups and emits their protocol events to the frontend.
 - [ ] The UI displays actual message routes, failures and retries.
-- [ ] The UI can inspect every node and its routing table.
+- [ ] The UI uses ordered stage columns, an upper forward lane and lower reply lane without duplicated reply nodes.
+- [ ] Messages remain visibly in transit between nodes for the Python-owned path delay.
+- [ ] D3 collision and stage forces produce readable layouts for 10 and 20 mix nodes.
+- [ ] The UI can inspect every node's protocol state and displays the exact algorithm name, reference, profile and parameters.
 - [ ] Bob polls for messages through his own client/Tor abstraction.
+- [ ] The user can enable or disable receiver polling during a run.
+- [ ] The user can block and restore paths or stage boundaries during a run.
+- [ ] Generated and edited staged messages work after create/reset and before run.
+- [ ] Default messages and replies contain deterministic 3–10-word Lorem ipsum text.
+- [ ] Participant device cards show timestamped send/reply logs.
 - [ ] Alice can encrypt a message for Bob and Bob can decrypt it.
 - [ ] Bob can address a reply using the sender reply public key carried inside the encrypted message.
+- [ ] The UI shows safe key/manifest/fragment lineage and never exposes the reply key as plaintext DHT/storage metadata.
 - [ ] The UI displays the event timeline and relevant message data without exposing private keys.
 - [ ] The same seed reproduces the same non-cryptographic simulation scenario.
 - [ ] Unit, integration and end-to-end tests pass.
@@ -1955,6 +2340,7 @@ Start by:
 5. committing each logical phase separately if Git is available.
 
 At every phase:
+- stop after each logical component, write/update tests, run them and inspect expected output before continuing;
 - run relevant tests;
 - report what changed;
 - report test results;
