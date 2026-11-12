@@ -388,7 +388,9 @@ export function packetRetryNotice(events: LabEvent[]): string | null {
   if (!event) return null;
   const packet = String(event.payload.packet_id ?? 'packet');
   if (event.event_type === 'packet_retry_scheduled') {
-    const previous = String(event.payload.previous_packet_id ?? 'The failed packet');
+    const previous = String(
+      event.payload.previous_packet_id ?? 'The failed packet',
+    );
     return `${previous} stopped at an unavailable node. Fresh end-to-end attempt ${packet} is queued for the sender’s next payload opportunity; a mix cannot reroute a Sphinx packet mid-route.`;
   }
   if (event.event_type === 'mixnet_route_constructed')

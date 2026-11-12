@@ -17,7 +17,9 @@ def test_complete_stratified_adjacency():
     assert [len(layer) for layer in t.mixnet.layers] == [4, 3, 3]
     node = t.nodes["mix-1"]
     assert isinstance(node, MixNode)
-    assert set(node.adjacent_peers) == set(t.mixnet.layers[1]) | set(t.mixnet.providers)
+    assert set(node.adjacent_peers) == (
+        set(t.mixnet.layers[1]) | set(t.mixnet.providers) | set(t.mixnet.service_providers)
+    )
     assert all(p.status == "unknown" for p in node.adjacent_peers.values())
     assert all(
         isinstance(p, NetworkPath) and p.source_id in t.nodes and p.target_id in t.nodes

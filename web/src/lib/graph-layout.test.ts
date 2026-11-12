@@ -247,7 +247,9 @@ test('explains that a failed Sphinx route stops before a fresh sender retry', ()
         payload: { packet_id: 'packet-2', attempt: 2 },
       },
     ]),
-  ).toBe('Retry packet-2 is now using a newly selected end-to-end route (attempt 2).');
+  ).toBe(
+    'Retry packet-2 is now using a newly selected end-to-end route (attempt 2).',
+  );
   expect(packetRetryNotice([{ ...base, message_id: null }])).toBeNull();
 });
 
