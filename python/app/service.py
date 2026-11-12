@@ -10,7 +10,6 @@ from .engine import Intervention
 from .lab import Laboratory
 from .steps import Action
 
-
 FIRST_HOP_STEP_LIMIT = 5000
 
 
