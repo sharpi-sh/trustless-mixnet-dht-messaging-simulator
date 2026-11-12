@@ -133,7 +133,7 @@ class LoopixTraffic:
             return node.adjacent_peers.get(peer)
         return None
 
-    def _observe(self, observer: str | None, peer: str, now: int, success: bool) -> bool:
+    def observe(self, observer: str | None, peer: str, now: int, success: bool) -> bool:
         entry = self.local_observation(observer, peer)
         if entry is None:
             return False
@@ -162,9 +162,9 @@ class LoopixTraffic:
             self.fail(packet_id, now, str(error))
             raise
 
-        self._observe(packet.previous_node, node_id, now, True)
+        self.observe(packet.previous_node, node_id, now, True)
         if packet.previous_node:
-            self._observe(node_id, packet.previous_node, now, True)
+            self.observe(node_id, packet.previous_node, now, True)
         node.last_activity = now
         packet.expected_node = hop.next_id
         packet.previous_node = node_id
@@ -202,7 +202,7 @@ class LoopixTraffic:
         observed = (
             unresponsive
             and packet.expected_node is not None
-            and self._observe(packet.previous_node, packet.expected_node, now, False)
+            and self.observe(packet.previous_node, packet.expected_node, now, False)
         )
         self._clear_queue(packet)
         packet.status = "failed"

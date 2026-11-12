@@ -11,6 +11,7 @@ import msgpack
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from .crypto import seal, unseal
+from .engine import TransportFailure
 from .sphinx import ReplyBlock, ReplySecret
 from .steps import Action
 from .topology import MixNode
@@ -46,7 +47,7 @@ class ReleaseRetrieval(Action):
 
 
 @dataclass(kw_only=True)
-class RetrievalFailure(Action):
+class RetrievalFailure(TransportFailure):
     exchange: str
     reason: str = "Retrieval path unavailable"
 
@@ -194,7 +195,14 @@ class RetrievalTransport:
 
     def _move(self, cell: RetrievalCell, source: str, target: str) -> None:
         arrival = replace(cell, source=source, target=target)
-        miss = RetrievalFailure(exchange=cell.exchange, lane=cell.lane, message_id=cell.message_id)
+        miss = RetrievalFailure(
+            exchange=cell.exchange,
+            source=source,
+            target=target,
+            token=cell.token,
+            lane=cell.lane,
+            message_id=cell.message_id,
+        )
         self.sim.transit(source, target, arrival, miss, token=cell.token, lane=cell.lane)
 
     def cancel(self, ticket: str) -> None:
@@ -204,6 +212,17 @@ class RetrievalTransport:
                 node = self.sim.topology.nodes[owner]
                 if isinstance(node, MixNode):
                     node.delayed_packets.pop(token, None)
+                    self.sim.emit(
+                        "mix_packet_cancelled",
+                        Action(
+                            source=owner,
+                            token=token,
+                            lane=ex.arrived.lane,
+                            message_id=ex.arrived.message_id,
+                        ),
+                        packet_id=token,
+                        traffic="retrieval",
+                    )
 
     def _fail(self, ticket: str, reason: str) -> None:
         ex = self._exchanges.get(ticket)
@@ -265,6 +284,20 @@ class RetrievalTransport:
             self._collect(ex, cell, cell.wire)
             return
         hop = self.sphinx.peel(cell.target, cell.wire)
+        target.last_activity = self.sim.now
+        traffic = self.sim.packets.traffic
+        traffic.observe(cell.source, target.id, self.sim.now, True)
+        traffic.observe(target.id, cell.source, self.sim.now, True)
+        self.sim.emit(
+            "sphinx_layer_processed",
+            cell,
+            packet_id=cell.token,
+            traffic="retrieval",
+            replay_count=self.sphinx.replay_count(target.id),
+            next_id=hop.next_id,
+            delay_ms=hop.delay_ms,
+            integrity="verified",
+        )
         if hop.next_id is None:
             if hop.payload is None:
                 raise ValueError("Missing retrieval packet payload")
@@ -282,10 +315,26 @@ class RetrievalTransport:
                 target.delayed_packets[cell.token] = self.sim.now + hop.delay_ms
             ex.waiting[cell.token] = target.id
             onward = replace(cell, source=target.id, target=hop.next_id, wire=hop.packet)
+            self.sim.emit(
+                "mix_packet_queued",
+                onward,
+                packet_id=cell.token,
+                traffic="retrieval",
+                delay_ms=hop.delay_ms,
+                release_at=self.sim.now + hop.delay_ms,
+            )
             self.sim.schedule(ReleaseRetrieval(source=target.id, cell=onward), hop.delay_ms)
 
     def handle(self, action: Action) -> bool:
         if isinstance(action, RetrievalFailure):
+            if action.exchange in self._exchanges and action.origin and action.origin.dispatched:
+                if self.sim.packets.traffic.observe(action.source, action.target, self.sim.now, False):
+                    self.sim.emit(
+                        "mixnet_adjacency_updated",
+                        action,
+                        observation="unresponsive",
+                        packet_id=action.token,
+                    )
             self._fail(action.exchange, action.reason)
         elif isinstance(action, (ReleaseRetrieval, RetrievalCell)):
             cell = action.cell if isinstance(action, ReleaseRetrieval) else action
@@ -297,6 +346,7 @@ class RetrievalTransport:
                 if isinstance(node, MixNode):
                     node.delayed_packets.pop(cell.token, None)
                 ex.waiting.pop(cell.token, None)
+                self.sim.emit("mix_packet_released", cell, packet_id=cell.token, traffic="retrieval")
                 self._move(cell, cell.source, cell.target)
             else:
                 try:

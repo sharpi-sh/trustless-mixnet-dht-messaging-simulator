@@ -53,6 +53,7 @@ def delta(lab: Laboratory, epoch: int, since: int) -> Delta:
                 "node_status_changed",
                 "mix_packet_queued",
                 "mix_packet_released",
+                "mix_packet_cancelled",
             }
             and source in lab.topology.nodes
         ):
