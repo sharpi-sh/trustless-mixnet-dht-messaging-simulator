@@ -23,8 +23,10 @@ for (const seed of [null, '2046379413032268']) {
       let connections = 0;
       page.on('websocket', () => connections++);
       await connect(page, backend.url);
-      if (seed)
+      if (seed) {
+        await page.getByLabel('Mix nodes', { exact: true }).fill('15');
         await page.getByLabel('Random seed', { exact: true }).fill(seed);
+      }
       const id = await createSimulation(page, backend);
       const sender =
         '[data-message-id="msg-1"][data-source="sender-1"][data-target="tor-sender-1"]';

@@ -23,8 +23,8 @@ class Config(Model):
     sender_channel: ChannelKind = "tor"
     recipient_channel: ChannelKind = "tor"
     participant_channels: dict[str, ChannelKind] = Field(default_factory=dict)
-    min_nodes: int = Field(15, ge=10, le=20)
-    max_nodes: int = Field(15, ge=10, le=20)
+    min_nodes: int = Field(6, ge=6, le=20)
+    max_nodes: int = Field(20, ge=6, le=20)
     randomise_count: bool = False
     pairing_strategy: Literal["all_to_one", "one_to_all", "one_to_one_pairs", "random_pairs"] = (
         "all_to_one"

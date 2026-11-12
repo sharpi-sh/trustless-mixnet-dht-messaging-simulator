@@ -5,6 +5,12 @@ from app.participants import People
 from app.topology import GlobalObserver, MixNode, NetworkPath, Topology
 
 
+def test_default_six_mixes_form_three_equal_layers():
+    config = Config()
+    topology = Topology(config, Random(4), People(config, Random(3)))
+    assert [len(layer) for layer in topology.mixnet.layers] == [2, 2, 2]
+
+
 def test_complete_stratified_adjacency():
     c = Config(min_nodes=10)
     t = Topology(c, Random(4), People(c, Random(3)))

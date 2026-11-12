@@ -98,7 +98,7 @@ async function capture(page: Page, name: string) {
   });
 }
 
-for (const count of [10, 20]) {
+for (const count of [6, 10, 20]) {
   test(
     'renders ' +
       count +
@@ -106,7 +106,10 @@ for (const count of [10, 20]) {
     async ({ page, backend }) => {
       await page.setViewportSize({ width: 1500, height: 1000 });
       await connect(page, backend.url);
-      await page.getByLabel('Mix nodes', { exact: true }).fill(String(count));
+      const mixes = page.getByLabel('Mix nodes', { exact: true });
+      await expect(mixes).toHaveValue('6');
+      await expect(mixes).toHaveAttribute('min', '6');
+      await mixes.fill(String(count));
       await page.getByLabel('Senders', { exact: true }).fill('3');
       await page.getByLabel('Random seed', { exact: true }).fill('32');
       const id = await createSimulation(page, backend);

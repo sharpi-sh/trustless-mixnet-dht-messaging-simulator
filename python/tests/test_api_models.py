@@ -56,7 +56,7 @@ def test_real_snapshot_preserves_mixes_and_hides_runtime_message_text():
     public = json.loads(initial.model_dump_json())
     assert all(m["text"] for m in public["messages"])
     mixes = [node for node in initial.topology.nodes if isinstance(node, MixDTO)]
-    assert len(mixes) == 15
+    assert len(mixes) == 6
     assert all(m.adjacent_peers and not m.delayed_packets for m in mixes)
     for node in initial.topology.nodes:
         details = NodeDetails.model_validate(lab.inspect(node.id))

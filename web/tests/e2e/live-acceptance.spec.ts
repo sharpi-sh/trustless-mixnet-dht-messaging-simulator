@@ -9,6 +9,7 @@ async function configure(page: Page) {
   const field = (name: string) => page.getByLabel(name, { exact: true });
   for (const [name, value] of Object.entries({
     Senders: 3,
+    'Mix nodes': 15,
     'Exchanges per conversation': 5,
     'Random seed': 254,
   })) {
