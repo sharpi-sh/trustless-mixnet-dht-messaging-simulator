@@ -80,6 +80,7 @@ class VaultRuntime:
         self.sim.emit(
             "message_chunked",
             action,
+            artefact_id=manifest.digest,
             count=len(manifest.fragments),
             size=len(ciphertext),
             container=manifest.id,
