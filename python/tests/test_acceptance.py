@@ -45,7 +45,7 @@ def test_three_senders_five_exchanges_with_polling_outages_and_retry():
     assert initial["step_delay_ms"] == 500 and initial["random_seed"] == 254
     assert len({device["tor_id"] for device in initial["devices"]}) == 4
     kinds = Counter(n["kind"] for n in initial["topology"]["nodes"])
-    assert kinds["person"] == 4 and kinds["mix"] == 15 and kinds["provider"] == 3
+    assert kinds["person"] == 4 and kinds["mix"] == 15 and kinds["provider"] == 5
     assert kinds["dht"] == kinds["storage"] == 5
     profiles = {p["id"]: p for p in initial["profiles"]}
     assert profiles["loopix-usenix-2017"]["year"] == 2017

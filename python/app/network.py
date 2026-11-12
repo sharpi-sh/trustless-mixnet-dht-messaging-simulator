@@ -66,7 +66,7 @@ class NetworkSimulation(Engine):
             state["queued_cells"] = sum(
                 len(self.inboxes[person.id].messages)
                 for person in self.clients.people.values()
-                if self.topology.mixnet.providers[int(person.role == "receiver")] == uid
+                if self.topology.provider_for(person.id) == uid
             )
             state["inbound_queue"] = state["queued_cells"]
         if node.kind in {"provider", "mix"}:

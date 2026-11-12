@@ -44,7 +44,7 @@ class Config(Model):
     client_loop_rate_per_minute: float = Field(1, gt=0, le=600)
     drop_cover_rate_per_minute: float = Field(1, gt=0, le=600)
     mix_loop_rate_per_minute: float = Field(1, gt=0, le=600)
-    dht_nodes: int = Field(8, ge=2, le=64)
+    dht_nodes: int = Field(3, ge=2, le=64)
     storage_nodes: int = Field(12, ge=1, le=32)
     replicas: int = Field(2, ge=1, le=8)
     chunk_bytes: int = Field(128, ge=32, le=4096)

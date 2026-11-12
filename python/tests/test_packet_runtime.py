@@ -112,7 +112,9 @@ def test_large_encrypted_payload_uses_independent_packets_and_real_links():
 
 def test_egress_timeout_retries_fresh_at_the_sender_and_only_fails_once():
     sim = PacketEngine()
-    path = sim.topology.paths[sim.topology.path_id("tor-sender-1", "provider-west")]
+    path = sim.topology.paths[
+        sim.topology.path_id("tor-sender-1", sim.topology.provider_for("sender-1"))
+    ]
     path.blocked = True
     sim.runtime.outbox["sender-1"].append(("msg-1", "receiver-1", b"envelope", "forward"))
     sim.schedule(TrafficClock(source="sender-1", kind="payload"))

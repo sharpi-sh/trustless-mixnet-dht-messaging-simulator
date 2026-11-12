@@ -88,13 +88,7 @@ class LoopixTraffic:
             return endpoint
         if self.topology.nodes[endpoint].kind != "person":
             raise ValueError("Loopix endpoint must be a participant or provider")
-        for provider in self.topology.mixnet.providers:
-            if (
-                self.topology.path_id(self.topology.channel_ids[endpoint], provider)
-                in self.topology.paths
-            ):
-                return provider
-        raise ValueError("Participant has no provider")
+        return self.topology.provider_for(endpoint)
 
     def build_packet(
         self, kind: Traffic, source_id: str, target_id: str, payload: bytes, lane: Lane = "forward"

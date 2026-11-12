@@ -152,8 +152,17 @@ class GlobalObserver:
 @dataclass(slots=True)
 class Mixnet:
     layers: list[list[str]] = field(default_factory=lambda: [[], [], []])
-    providers: tuple[str, str] = ("provider-west", "provider-east")
+    west_providers: tuple[str, ...] = (
+        "provider-west",
+        "provider-west-2",
+        "provider-west-3",
+    )
+    east_providers: tuple[str, ...] = ("provider-east",)
     service_providers: tuple[str, ...] = ("provider-service",)
+
+    @property
+    def providers(self) -> tuple[str, ...]:
+        return (*self.west_providers, *self.east_providers)
 
 
 class Topology:
@@ -162,6 +171,13 @@ class Topology:
         self.nodes: dict[str, Node] = {}
         self.paths: dict[str, NetworkPath] = {}
         self.mixnet = Mixnet()
+        assignment_rng = Random((config.random_seed or 0) ^ 0x57535450524F5649)
+        self.provider_by_person = {
+            person.id: assignment_rng.choice(
+                self.mixnet.west_providers if person.role == "sender" else self.mixnet.east_providers
+            )
+            for person in people.people.values()
+        }
         self.channel_ids = {uid: person.tor.id for uid, person in people.people.items()}
         for person in people.people.values():
             sender = person.role == "sender"
@@ -189,14 +205,16 @@ class Topology:
                 else channel.simulated_address
             )
             self.connect(person.id, channel.id, _CHANNEL_ENTRY[kind])
-        for idx, provider in enumerate(self.mixnet.providers):
+        for idx, provider in enumerate(self.mixnet.west_providers, start=1):
             self.add_node(
                 provider,
-                ["West provider", "East provider"][idx],
+                f"West provider {idx}",
                 "provider",
-                2 + 4 * idx,
-                ["West provider", "East provider"][idx],
+                2,
+                "Loopix",
             )
+        for provider in self.mixnet.east_providers:
+            self.add_node(provider, "East provider", "provider", 6, "East provider")
         for provider in self.mixnet.service_providers:
             self.add_node(
                 provider,
@@ -240,9 +258,7 @@ class Topology:
                 self.connect(dht, peer, "Kademlia RPC")
             for provider in self.mixnet.providers:
                 self.connect(provider, dht, "opaque application handoff")
-            self.connect(
-                self.service_gateways[dht], dht, "post-mix anonymous DHT service delivery"
-            )
+            self.connect(self.service_gateways[dht], dht, "post-mix anonymous DHT service delivery")
         for i, store in enumerate(self.storage_ids):
             self.add_node(store, f"Vault {i + 1}", "storage", 8, "Vault")
             self.connect(
@@ -251,10 +267,13 @@ class Topology:
             for dht in self.dht_ids:
                 self.connect(dht, store, "encrypted fragment transfer")
         for person in people.people.values():
-            provider = self.mixnet.providers[int(person.role == "receiver")]
+            provider = self.provider_for(person.id)
             self.connect(
                 person.tor.id, provider, f"{_CHANNEL_EGRESS[person.tor.kind]} → Loopix provider"
             )
+
+    def provider_for(self, person_id: str) -> str:
+        return self.provider_by_person[person_id]
 
     def add_node(self, uid: str, label: str, kind: Any, col: int, stage: str) -> Node:
         index = len(self.nodes)

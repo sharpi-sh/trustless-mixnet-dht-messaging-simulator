@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, Mapping
 
 from .config import Model
 from .crypto import seal, sign_bundle, unseal, verify_bundle
@@ -28,13 +28,15 @@ class Lineage(Model):
 
 
 class DeviceProtocol:
-    def __init__(self, clients: People):
+    def __init__(self, clients: People, provider_by_person: Mapping[str, str] | None = None):
         self.clients = clients
         self.published = MappingProxyType(
             {
                 p.id: PublishedContact(
                     p.public_key,
-                    "provider-west" if p.role == "sender" else "provider-east",
+                    (provider_by_person or {}).get(
+                        p.id, "provider-west" if p.role == "sender" else "provider-east"
+                    ),
                     p.signing_public_key,
                 )
                 for p in clients.people.values()

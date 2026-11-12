@@ -26,7 +26,8 @@ def test_provider_and_device_inspectors_count_only_their_local_queued_items():
     s.inboxes["receiver-1"].messages.append(b"opaque receiver cell")
     s.packets.outbox["sender-1"].append(("message", "receiver-1", b"ciphertext", "forward"))
     assert s.inspect("provider-east")["state"]["queued_cells"] == 1
-    assert s.inspect("provider-west")["state"]["queued_cells"] == 0
+    for provider in s.topology.mixnet.west_providers:
+        assert s.inspect(provider)["state"]["queued_cells"] == 0
     assert s.inspect("provider-east")["state"]["inbound_queue"] == 1
     assert s.inspect("mix-1")["state"]["inbound_queue"] == 0
     assert s.inspect("sender-1")["state"]["outbound_queue"] == 1

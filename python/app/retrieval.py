@@ -103,7 +103,7 @@ class RetrievalTransport:
         if reply_capacity < 0:
             raise ValueError("Negative reply capacity")
         topo = self.sim.topology
-        client_gateway = topo.mixnet.providers[int(self.sim.clients.people[device].role == "receiver")]
+        client_gateway = topo.provider_for(device)
         service_gateway = topo.service_gateways[service]
         self._serial += 1
         ticket = f"retrieval-{self._serial}"
