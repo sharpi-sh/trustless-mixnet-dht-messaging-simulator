@@ -1,8 +1,9 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { SvelteMap } from 'svelte/reactivity';
+  import { avatarUrl } from './avatars';
   import {
     chatRows,
+    inboxContacts,
     lastActivity,
     logicalStamp,
     verifiedSigner,
@@ -27,7 +28,7 @@
   const title = $derived(
     role === 'sender' ? 'Sender conversations' : 'Recipient conversations',
   );
-  let thread = $state('');
+  let selectedPeer = $state('');
   let entries = $state<HTMLElement>(),
     following = true;
   const choices = $derived(devices.filter((d) => d.role === role));
@@ -35,33 +36,28 @@
     choices.find((d) => d.id === selectedId) ?? choices[0],
   );
   const names = $derived(new Map(devices.map((d) => [d.id, d.label])));
-  const conversations = $derived.by(() => {
-    const peers = new SvelteMap<string, string>();
-    for (const m of messages) {
-      if (m.sender_id === person?.id) peers.set(m.conversation_id, m.target_id);
-      else if (m.target_id === person?.id)
-        peers.set(m.conversation_id, m.sender_id);
-    }
-    return peers;
-  });
+  const history = $derived(chatRows(person?.logs ?? []));
+  const inbox = $derived(inboxContacts(history, messages, person?.id));
   const rows = $derived(
-    chatRows(person?.logs ?? []).filter(
-      (r) => !thread || r.conversation_id === thread,
-    ),
+    selectedPeer
+      ? history.filter(
+          (row) => inbox.peers.get(row.conversation_id) === selectedPeer,
+        )
+      : history,
   );
   const times = $derived(lastActivity(person?.logs ?? []));
   $effect(() => {
     const list = entries,
       count = rows.length,
       owner = person?.id,
-      conversation = thread;
+      peer = selectedPeer;
     if (list && untrack(() => following)) {
       void tick().then(() => {
         if (
           list === entries &&
           count === rows.length &&
           owner === person?.id &&
-          conversation === thread
+          peer === selectedPeer
         )
           list.scrollTop = list.scrollHeight;
       });
@@ -86,21 +82,32 @@
         </dd>
       </dl>
     {/if}
-    {#if conversations.size > 1}
-      <select
-        class="thread"
-        aria-label={role === 'sender' ? 'Sender thread' : 'Recipient thread'}
-        bind:value={thread}
-        onchange={() => (following = true)}
-      >
-        <option value="">All conversations</option
-        >{#each conversations as [conv, peer] (conv)}<option value={conv}
-            >With {names.get(peer) ?? peer}</option
-          >{/each}
-      </select>
-    {:else if conversations.size}<small
-        >With {names.get([...conversations.values()][0])}</small
-      >{/if}
+    {#if inbox.received.size}
+      <div class="contacts" role="group" aria-label="Filter chat by contact">
+        {#each inbox.received as [id, count] (id)}
+          {@const label = names.get(id) ?? id}
+          {@const description =
+            label +
+            ', ' +
+            count +
+            (count === 1 ? ' message received' : ' messages received')}
+          <button
+            type="button"
+            class="contact"
+            aria-label={description}
+            title={selectedPeer === id ? 'Show all conversations' : description}
+            aria-pressed={selectedPeer === id}
+            onclick={() => {
+              following = true;
+              selectedPeer = selectedPeer === id ? '' : id;
+            }}
+          >
+            <img src={avatarUrl(id)} alt="" width="30" height="30" />
+            <span class="badge" aria-hidden="true">{count}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </header>
   <div
     class="messages"
@@ -166,24 +173,61 @@
     color: var(--muted);
     letter-spacing: 0;
   }
-  header strong,
-  header select {
+  header strong {
     font:
       650 1rem/1.35 Inter,
       Arial,
       sans-serif;
     letter-spacing: -0.025em;
   }
-  header select {
-    width: 100%;
+  .contacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 6px;
+    padding-top: 4px;
+  }
+  button.contact {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     border: 0;
+    border-radius: 50%;
     background: transparent;
-    padding: 0.05rem 0;
-    color: var(--text);
     cursor: pointer;
   }
-  small,
-  header select.thread {
+  .contact img {
+    display: block;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  .contact[aria-pressed='true'] img {
+    outline: 2px solid #167043;
+    outline-offset: 2px;
+  }
+  .contact:focus-visible {
+    outline: 2px solid var(--text);
+  }
+  .badge {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    min-width: 16px;
+    padding: 0 3px;
+    border: 1px solid white;
+    border-radius: 20px;
+    background: #b42330;
+    color: white;
+    text-align: center;
+    font:
+      700 10px/14px Inter,
+      Arial,
+      sans-serif;
+  }
+  small {
     font:
       0.72rem/1.45 Inter,
       Arial,

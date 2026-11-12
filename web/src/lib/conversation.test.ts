@@ -63,3 +63,48 @@ test('shows the selected participant’s message history, address and last activ
   expect(body).toContain('data-last-sent="23"');
   expect(body).toContain('From Lena');
 });
+
+test('renders one portrait per incoming contact and counts only received entries', () => {
+  const first = snapshot.messages[0];
+  const bob = snapshot.devices[0];
+  const alice = {
+    ...bob,
+    id: first.sender_id,
+    label: 'Alice',
+    role: 'sender' as const,
+  };
+  const nina = { ...alice, id: 'sender-2', label: 'Nina' };
+  const chris = { ...alice, id: 'sender-3', label: 'Chris' };
+  const messages = [
+    first,
+    ...[alice, nina, chris].map((peer, i) => ({
+      ...first,
+      id: 'm' + i,
+      conversation_id: 'c' + i,
+      sender_id: peer.id,
+    })),
+  ];
+  const logs = messages.map((m, i) => ({
+    ...bob.logs[0],
+    message_id: m.id,
+    conversation_id: m.conversation_id,
+    state: i < 3 ? ('received' as const) : ('staged' as const),
+  }));
+  const { body } = render(ConversationColumn, {
+    props: {
+      role: 'receiver',
+      devices: [
+        { ...bob, logs: [...logs, { ...logs[2], state: 'delivered' }] },
+        alice,
+        nina,
+        chris,
+      ],
+      messages,
+    },
+  });
+  expect(body).toContain('aria-label="Alice, 2 messages received"');
+  expect(body).toContain('aria-label="Nina, 1 message received"');
+  expect(body).toContain('src="/avatars/sender-1.jpg"');
+  expect(body).not.toContain('/avatars/sender-3.jpg');
+  expect(body).not.toContain('<select');
+});
