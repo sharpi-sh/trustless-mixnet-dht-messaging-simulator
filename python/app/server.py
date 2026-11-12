@@ -26,3 +26,15 @@ def health() -> Health:
 @app.get("/api/config")
 def defaults() -> Config:
     return Config()
+
+
+class Info(Model):
+    api_version: str = "1"
+    port: int | None
+    capabilities: list[str]
+    protocols: list[dict] = []
+
+
+@app.get("/api/info")
+def info() -> Info:
+    return Info(port=getattr(app.state, "port", None), capabilities=["configuration"])
