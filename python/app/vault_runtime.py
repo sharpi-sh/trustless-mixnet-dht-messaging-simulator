@@ -93,11 +93,10 @@ class VaultRuntime:
         if job.waiting:
             return
         del self.writes[action.token]
-        context=dict(source=action.source,token=action.token,message_id=action.message_id,lane=action.lane)
         if len(job.placed)!=len(job.manifest.fragments):
-            self.sim.schedule(VaultFailed(**context,reason="No successful replica for a required chunk"))
+            self.sim.schedule(VaultFailed(source=action.source,token=action.token,message_id=action.message_id,lane=action.lane,reason="No successful replica for a required chunk"))
             return
-        self.sim.schedule(Placed(**context,manifest=job.manifest))
+        self.sim.schedule(Placed(source=action.source,token=action.token,message_id=action.message_id,lane=action.lane,manifest=job.manifest))
 
     def fetch(self,action: Action,manifest: MessageManifest) -> None:
         self.reads[action.token]=ReadJob(manifest)
@@ -136,7 +135,8 @@ class VaultRuntime:
                 self._settle_write(action,False)
             elif action.token in self.reads:
                 f=self.reads[action.token].manifest.fragments[action.index]
-                sim.storage.record_unavailable(action.target,f,"read")
+                if action.operation=="read":
+                    sim.storage.record_unavailable(action.target,f,"read")
                 self._read(action,action.index,action.replica+1)
         elif isinstance(action,BytesReturned):
             if action.token not in self.reads:
@@ -161,7 +161,7 @@ class VaultRuntime:
                 self._read(action,action.index,action.replica+1)
             else:
                 returned=BytesReturned(**vars(action),data=data)
-                miss=VaultMiss(**vars(action),operation="read")
+                miss=VaultMiss(**vars(action),operation="return")
                 sim.transit(action.target,action.source,returned,miss,token=action.token,lane=action.lane)
         else:
             return False
