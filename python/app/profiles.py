@@ -121,10 +121,14 @@ def profiles(c: Config, *, all_channels: bool = False) -> list[Profile]:
                 "Receive the encrypted response through single-use reply blocks",
             ],
             boundaries=[
-                "Local retrieval protocol using the simulator’s Sphinx packet format. "
-                "Live Nym compatibility and network anonymity are outside the model.",
-                "A storage service can correlate repeated identifiers and request timing. "
-                "The simulator event trace can correlate both legs of an exchange.",
+                (
+                    "Local retrieval protocol using the simulator’s Sphinx packet format. "
+                    "Live Nym compatibility and network anonymity are outside the model."
+                ),
+                (
+                    "A storage service can correlate repeated identifiers and request timing. "
+                    "The simulator event trace can correlate both legs of an exchange."
+                ),
             ],
         ),
         Profile(
