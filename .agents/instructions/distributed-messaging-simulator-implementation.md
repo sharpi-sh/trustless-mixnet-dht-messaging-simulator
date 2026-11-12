@@ -24,6 +24,8 @@ Build the application described in this document. Treat this document as the sou
 8. **The playback delay is a display/execution pacing delay between simulation steps.** It is not a simulation-time multiplier and must not be conflated with outage durations or network timeouts.
 9. **The first implementation is a local simulator.** It does not connect to the real Tor network, real DHT peers, public mixnet operators or real distributed storage.
 10. **Do not claim the simulator proves anonymity or production security.** It is a model for exploring and testing protocol behaviour and failure cases.
+11. **Every executable network step is an object.** Routing attempts, node transitions, polling, lookup, storage and retrieval actions must be represented by explicit Python `SimulationStep` objects rather than anonymous callbacks or untyped dictionaries.
+12. **Every simulation owns one global observer.** The MVP `GlobalObserver` is a no-op placeholder: it has identity and lifecycle only, performs no observation, receives no privileged state and does not affect the simulation.
 
 ### Implementation discipline
 
@@ -507,6 +509,23 @@ Each simulated object should have:
 
 Do not serialise arbitrary Python objects directly to JSON. Use explicit Pydantic response/event models.
 
+Every executable network action must be represented by a `SimulationStep` object. A step is part of the domain model, not merely a UI event or scheduler callback. Concrete step types may represent routing, delivery attempts, availability transitions, polling, DHT lookups, fragment placement and fragment retrieval.
+
+Each step should expose:
+
+- stable `step_id`
+- step type
+- simulation ID
+- scheduled simulation time
+- lifecycle state
+- involved object IDs
+- typed inputs
+- typed result or failure details after execution
+- event/log context
+- explicit DTO mapping for frontend display
+
+The scheduler queues and executes step objects. It must not encode network behaviour in anonymous callbacks, and a step must remain distinguishable from the events it emits.
+
 ## 4.2 Person
 
 One shared `Person` class represents all users.
@@ -822,21 +841,22 @@ Suggested objects:
 - `Simulation`
 - `SimulationConfig`
 - `SimulationRNG`
+- `SimulationStep` and concrete step types
 - `EventScheduler`
 - `PlaybackController`
 - `EventBus`
 - `TopologySnapshotBuilder`
-- `AttackerObserver` / `NetworkObserver`
+- `GlobalObserver`
 
 `Simulation` owns a single run and all of its domain objects.
 
-`EventScheduler` orders and executes simulation events.
+`EventScheduler` orders and executes `SimulationStep` objects. Each step may publish one or more typed events, but events are records of execution and are not substitutes for the step object.
 
 `PlaybackController` controls the real-time pause between visible steps.
 
 `EventBus` publishes typed events to the WebSocket layer.
 
-`NetworkObserver` records what an observer can see. It must not have access to hidden internal state unless the selected observer model explicitly grants it.
+`GlobalObserver` is instantiated once and owned by `Simulation`. In the MVP it is deliberately inert: it does not subscribe to events, inspect nodes, record traffic, receive hidden state or influence execution. It exists only as an explicit extension point for a future approved observer or adversary model.
 
 ---
 
@@ -1399,7 +1419,11 @@ Use a monorepo-style local project:
 ```text
 distributed-messaging-simulator/
 ├── README.md
-├── implementation.md
+├── AGENTS.md
+├── docs/
+├── .agents/
+│   └── instructions/
+│       └── distributed-messaging-simulator-implementation.md
 ├── pyproject.toml
 ├── package.json
 ├── .gitignore
@@ -1428,12 +1452,14 @@ distributed-messaging-simulator/
 │   │   │   └── conversation.py
 │   │   ├── simulation/
 │   │   │   ├── simulation.py
+│   │   │   ├── steps.py
 │   │   │   ├── scheduler.py
 │   │   │   ├── event_bus.py
 │   │   │   ├── playback.py
 │   │   │   ├── availability.py
 │   │   │   ├── routing.py
 │   │   │   ├── peer_discovery.py
+│   │   │   ├── global_observer.py
 │   │   │   └── topology.py
 │   │   ├── crypto/
 │   │   │   ├── key_manager.py
@@ -1545,6 +1571,8 @@ Test at minimum:
 - Playback delay changes do not change logical outage duration.
 
 ### Scheduler/playback
+- Every scheduled network action is a `SimulationStep` object with stable identity and typed execution state.
+- Step execution emits events without conflating the step object with those event records.
 - Events execute in logical time order.
 - Same seed and same configuration produce reproducible non-cryptographic simulation decisions.
 - Playback delay is read between steps.
@@ -1667,6 +1695,8 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement `StorageNetwork` and `StorageNode`.
 - [ ] Implement `Fragment` and `MessageManifest`.
 - [ ] Implement `Conversation`.
+- [ ] Implement the `SimulationStep` base contract and typed concrete network-step objects.
+- [ ] Implement one inert `GlobalObserver` owned by each simulation.
 - [ ] Implement explicit DTO/topology serialisation.
 - [ ] Test object identity, ownership and uniqueness.
 
@@ -1693,6 +1723,7 @@ Implement in this order. Do not start with the D3 UI.
 - [ ] Implement seeded failure scheduling.
 - [ ] Support short, long, always-offline and always-online cases.
 - [ ] Implement deterministic event scheduler.
+- [ ] Queue and execute `SimulationStep` objects rather than anonymous callbacks or untyped step dictionaries.
 - [ ] Implement simulation clock.
 - [ ] Implement separate playback delay controller.
 - [ ] Implement pause/resume/step/stop.
