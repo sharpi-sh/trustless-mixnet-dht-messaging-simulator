@@ -167,6 +167,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     )
     .toBe(false);
 
+  await page.getByRole('checkbox', { name: 'All transports' }).check();
   await expect(graph.locator('[data-transit-id]').first()).toBeAttached({
     timeout: 15000,
   });
@@ -197,6 +198,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   expect(await marker.getAttribute('transform')).toBe(point);
   expect((await read()).simulation_time_ms).toBe(paused.simulation_time_ms);
 
+  await page.getByRole('checkbox', { name: 'All transports' }).uncheck();
   await changePace(slider, 1);
   await expect.poll(async () => (await read()).step_delay_ms).toBe(1);
   await button('Resume').click();

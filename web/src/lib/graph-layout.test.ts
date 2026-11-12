@@ -279,6 +279,7 @@ test('retains message-associated device, reply and repeat transits with their au
   record('failed', 'three', 'msg-1', 'forward', 28, { reason: 'blocked' });
   record('started', 'maintenance', null, 'forward', 29);
   record('started', 'four', 'msg-3', 'forward', 30);
+  record('failed', 'bootstrap', null, 'forward', 31);
   const data = history('lab:0', log);
   expect(data.legs.get('one')).toMatchObject({
     status: 'completed',
@@ -300,6 +301,8 @@ test('retains message-associated device, reply and repeat transits with their au
     lane: 'reply',
   });
   expect(data.legs.has('maintenance')).toBe(false);
+  expect(data.seen.get('alice~tor-alice')?.failed).toBe(true);
+  expect(data.seenMessages.get('alice~tor-alice')?.failed).toBe(false);
   const [first, reply, other] = data.messageTracks.values();
   expect(first.legs).toEqual(['one', 'three']);
   expect(reply.lane).toBe('reply');

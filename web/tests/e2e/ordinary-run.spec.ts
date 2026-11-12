@@ -91,6 +91,9 @@ for (const seed of [null, '2046379413032268']) {
       const button = (name: string) =>
         page.getByRole('button', { name, exact: true });
       await button('Run').click();
+      await expect(
+        page.locator('[data-transit-id]:not([data-message-id])'),
+      ).toHaveCount(0);
       const movement = await motion;
       expect(
         movement,

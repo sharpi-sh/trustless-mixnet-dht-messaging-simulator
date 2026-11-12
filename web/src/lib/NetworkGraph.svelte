@@ -114,12 +114,6 @@
     onNode(id);
   }
   let contacts = $derived(contactIds(details, selectedNode));
-  let activeCount = $derived(
-    lab.topology.paths.reduce(
-      (sum, p) => sum + Object.keys(p.active).length,
-      0,
-    ),
-  );
   const history = makeTraceHistory();
   let traces = $derived(history(lab.simulation_id + ':' + lab.epoch, events));
   let pick = $state<{ epoch: string; id: string } | null>(null);
@@ -178,12 +172,14 @@
               ? left.id
               : '';
         const known = !!other && contacts.has(other);
-        const active = Object.entries(p.active);
+        const active = Object.entries(p.active).filter(
+          ([id]) => showAll || traces.legs.has(id),
+        );
         const planned =
             showAll && !pinned && ['running', 'paused'].includes(lab.status)
               ? traces.chosen.get(p.id)
               : undefined,
-          observed = traces.seen.get(p.id);
+          observed = (showAll ? traces.seen : traces.seenMessages).get(p.id);
         const recentFailure =
           observed?.failed &&
           lab.simulation_time_ms - observed.at <= lab.config.ack_timeout_ms;
@@ -257,7 +253,7 @@
                     ? 'known'
                     : planned
                       ? 'planned'
-                      : p.completed
+                      : (showAll ? p.completed : observed && !observed.failed)
                         ? 'completed'
                         : 'configured';
         return [
@@ -299,7 +295,7 @@
   );
   let endpoints = $derived(
     transitEndpoints(
-      transits.filter((m) => showAll || m.leg).map((m) => m.t),
+      transits.map((m) => m.t),
       traces.retries,
     ),
   );
@@ -409,7 +405,8 @@
       <p>
         {lab.topology.nodes.length} nodes <span>·</span>
         {lab.topology.paths.length} configured paths <span>·</span>
-        {activeCount} in transit
+        {transits.length}
+        {showAll ? 'in transit' : 'message transits'}
       </p>
     </div>
     <div class="tools">
@@ -758,7 +755,6 @@
           <g
             class="marker"
             class:background={!m.leg}
-            class:concealed={!showAll && !m.leg}
             data-message-id={m.leg?.messageId}
             data-transit-id={m.id}
             data-retry={m.retry}
@@ -1221,9 +1217,6 @@
     stroke: #a3afa7;
     stroke-width: 1;
     opacity: 0.3;
-  }
-  .marker.concealed {
-    display: none;
   }
   .marker.background {
     opacity: 0.35;
