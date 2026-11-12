@@ -163,18 +163,32 @@ def test_three_senders_five_exchanges_with_polling_outages_and_retry():
     required = [
         "public_key_retrieved",
         "reply_key_encapsulated",
+        "message_signed",
         "message_encrypted",
         "fragment_stored",
         "manifest_published",
         "fragment_retrieved",
         "message_reconstructed",
         "message_decrypted",
+        "sender_signature_verified",
         "reply_key_learned",
     ]
     positions = [ops.index(operation) for operation in required]
     assert positions == sorted(positions)
     learned = line[positions[-1]]
-    assert learned["location"] == "receiver-1" and "unverified" in learned["detail"].lower()
+    assert learned["location"] == "receiver-1" and learned["detail"] == "Authenticated reply key"
+    for message in messages.values():
+        rows = {row["operation"]: row for row in lab.lineage if row["message_id"] == message["id"]}
+        signed, verified = rows["message_signed"], rows["sender_signature_verified"]
+        assert signed["location"] == message["sender_id"]
+        assert verified["location"] == message["target_id"]
+        assert (
+            signed["artefact"]
+            == verified["artefact"]
+            == lab.clients.people[message["sender_id"]].signing_fingerprint
+        )
+        assert signed["container"] == verified["container"] == rows["message_encrypted"]["artefact"]
+        assert rows["reply_key_learned"]["detail"] == "Authenticated reply key"
     assert all(edited not in str(e.payload) for e in events)
     assert lab.clients.people["sender-1"].public_key.hex() not in str(line)
 
