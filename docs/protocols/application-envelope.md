@@ -4,7 +4,9 @@ Each simulated device generates two independent key pairs from operating-system 
 
 Alice signs the message text and its context, including the sender and recipient IDs, message and conversation IDs, exchange number, direction, Bob’s X25519 recipient public key and the X25519 public key she designates for replies. Her device encrypts the signed bundle to Bob using a fresh ephemeral X25519 key, HKDF-SHA-256 and AES-256-GCM. Message bundles and manifests have separate encryption purpose labels.
 
-Bob reconstructs and decrypts the bundle, checks the expected context and verifies the Ed25519 signature against the expected sender’s pinned public key. Only then does his device accept the text and learn the reply key. Bob signs his reply using his own Ed25519 private key and encrypts it to Alice’s verified reply address. A forged signature, a substituted reply key or a bundle presented in the wrong conversation fails verification.
+Inside the encrypted envelope, the signed format begins with the four bytes `MXSB` and version byte `0x02`, followed by the 32-byte Ed25519 public key, a 64-byte signature and the signed MessagePack array. In order, the array contains the domain label `mixnet-laboratory/device-message/Ed25519/v2`, message ID, conversation ID, exchange number, direction, sender ID, recipient ID, recipient encryption key and encoded inner bundle. The inner bundle carries its version, message ID, text and reply key.
+
+Bob reconstructs and decrypts the bundle. He compares the enclosed signing key with the expected sender’s directory pin, verifies the signature over the supplied array, then checks its contents against the expected delivery context. Only then does his device accept the text and learn the reply key. Bob signs his reply using his own Ed25519 private key and encrypts it to Alice’s verified reply address. A forged signature, a substituted reply key or a bundle presented in the wrong conversation fails verification.
 
 The device log identifies the verified signer and the SHA-256 fingerprint of their Ed25519 public key. The separate reply-key fingerprint identifies the X25519 encryption key.
 
