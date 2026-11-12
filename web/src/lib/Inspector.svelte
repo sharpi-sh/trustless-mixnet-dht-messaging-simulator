@@ -52,6 +52,7 @@
       : [],
   );
   let tabId = $props.id();
+  let metadata: HTMLDetailsElement;
   function highlight(id: string) {
     if (!node) return;
     const actual = peerPath(connected, node.id, id);
@@ -129,7 +130,12 @@
       )}
     </dl>
     {#if info}<p class="profile">
-        {info.profile.name} <code>{info.profile.id}</code>
+        {info.profile.name}
+        <a
+          href={'#' + tabId + '-algorithm'}
+          onclick={() => (metadata.open = true)}
+          ><code>{info.profile.id}</code></a
+        >
       </p>{/if}
     <div class="tabs" role="tablist" aria-label="Node details">
       {#each tabs as t, i (t)}
@@ -429,31 +435,30 @@
                 >{t.source} → {t.target}</button
               ><small>{t.token} · {time(t.start_ms)} to {time(t.end_ms)}</small>
             </p>{/each}
-          <details>
-            <summary>Algorithm and parameters</summary>
-            <p><b>{info.profile.name}</b></p>
-            {#if info.profile.reference}<p>
-                <a
-                  href={info.profile.reference}
-                  target="_blank"
-                  rel="noreferrer">Reference paper ({info.profile.year})</a
-                >
-              </p>{/if}
-            <dl class="facts">
-              {#each Object.entries(info.profile.parameters) as [key, value] (key)}{@render datum(
-                  label(key),
-                  value,
-                )}{/each}
-            </dl>
-            {#each info.profile.operations as op (op)}<p>· {op}</p>{/each}
-            <h4>Simulation boundaries</h4>
-            {#each info.profile.boundaries as limit (limit)}<p>
-                {limit}
-              </p>{/each}
-          </details>
         {/if}
       {/if}
     </div>
+    {#if info}
+      <details id={tabId + '-algorithm'} bind:this={metadata}>
+        <summary>Algorithm and parameters</summary>
+        <p><b>{info.profile.name}</b></p>
+        {#if info.profile.reference}<p>
+            <a href={info.profile.reference} target="_blank" rel="noreferrer"
+              >Reference paper ({info.profile.year})</a
+            >
+          </p>{/if}
+        <dl class="facts">
+          {#each Object.entries(info.profile.parameters) as [key, value] (key)}{@render datum(
+              label(key),
+              value,
+            )}{/each}
+        </dl>
+        {#each info.profile.operations as op (op)}<p>· {op}</p>{/each}
+        <h4>Simulation boundaries</h4>
+        {#each info.profile.boundaries as limit (limit)}<p>
+            {limit}
+          </p>{/each}
+      </details>{/if}
   </aside>
 {:else if path}
   <aside class="inspect" aria-label="Path inspector">
