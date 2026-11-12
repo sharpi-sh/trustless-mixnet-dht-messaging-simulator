@@ -327,14 +327,18 @@ class RetrievalTransport:
 
     def handle(self, action: Action) -> bool:
         if isinstance(action, RetrievalFailure):
-            if action.exchange in self._exchanges and action.origin and action.origin.dispatched:
-                if self.sim.packets.traffic.observe(action.source, action.target, self.sim.now, False):
-                    self.sim.emit(
-                        "mixnet_adjacency_updated",
-                        action,
-                        observation="unresponsive",
-                        packet_id=action.token,
-                    )
+            if (
+                action.exchange in self._exchanges
+                and action.origin is not None
+                and action.origin.dispatched
+                and self.sim.packets.traffic.observe(action.source, action.target, self.sim.now, False)
+            ):
+                self.sim.emit(
+                    "mixnet_adjacency_updated",
+                    action,
+                    observation="unresponsive",
+                    packet_id=action.token,
+                )
             self._fail(action.exchange, action.reason)
         elif isinstance(action, (ReleaseRetrieval, RetrievalCell)):
             cell = action.cell if isinstance(action, ReleaseRetrieval) else action
