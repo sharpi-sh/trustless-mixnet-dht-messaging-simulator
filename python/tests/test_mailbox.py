@@ -197,3 +197,24 @@ def test_lost_request_retries_without_any_channel_to_service_fallback():
     assert any(e.event_type == "mailbox_retry" for e in sim.events)
     assert not any(e.event_type == "manifest_retrieved" for e in sim.events)
     assert not sim.mail._jobs and not sim.vaults.reads
+
+
+def test_delayed_manifest_lookup_result_cannot_spend_a_new_reply_block():
+    from app.dht_runtime import DHTResult
+    from app.kad_types import Complete
+    from app.retrieval import RetrievalFailure
+
+    sim = MailboxExperiment()
+    ciphertext = sim.send()
+    sim.through(lambda: bool(sim.inboxes["receiver-1"].messages))
+    sim.poll()
+    sim.through(lambda: bool(sim.rpc.pending))
+    op = next(token for token in sim.rpc.pending if "/" in token)
+    job_id, ticket = op.split("/")
+    sim.retrieval.handle(RetrievalFailure(exchange=ticket, reason="expired"))
+    sim.through(lambda: bool(sim.mail._jobs[job_id].ticket and sim.mail._jobs[job_id].ticket != ticket))
+    new_ticket = sim.mail._jobs[job_id].ticket
+    sim.mail.handle(DHTResult(token=op, result=Complete(op, True, b"stale", ())))
+    assert sim.mail._jobs[job_id].ticket == new_ticket
+    sim.through(lambda: sim.result is not None)
+    assert isinstance(sim.result, BundleDelivered) and sim.result.ciphertext == ciphertext

@@ -18,6 +18,7 @@ from .crypto import seal, unseal
 from .dht_runtime import DHTRequest, DHTResult
 from .packet_runtime import PacketDelivered
 from .polling import MailboxItem
+from .retrieval import RetrievalCallback
 from .steps import Action
 from .storage import MessageManifest
 from .traffic import Lane
@@ -49,15 +50,14 @@ class _Stage(Enum):
 
 
 @dataclass(kw_only=True)
-class MailboxStep(Action):
+class MailboxStep(RetrievalCallback):
     stage: _Stage
-    ticket: str = field(default="", repr=False)
-    data: bytes = field(default=b"", repr=False)
     manifest: MessageManifest | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
 class MailboxTimeout(Action):
+    ticket: str = ""
     continuation: MailboxStep = field(repr=False)
 
 
@@ -158,6 +158,7 @@ class MailboxRuntime:
         if not job.egress and step.stage == _Stage.REQUEST:
             self.sim.retrieval.cancel(job.ticket)
             job.ticket = ""
+            job.pending = None
         if job.retries >= self.sim.config.max_retries:
             self._fail(job, reason)
             return
@@ -245,7 +246,7 @@ class MailboxRuntime:
             sim.schedule(
                 DHTRequest(
                     source=job.gateway,
-                    token=job.token,
+                    token=job.token if writing else f"{job.token}/{action.ticket}",
                     lane=job.lane,
                     message_id=job.message_id,
                     key=int.from_bytes(job.handle if writing else action.data[:20], "big"),
@@ -274,6 +275,7 @@ class MailboxRuntime:
                 job.step(_Stage.LOOKUP, job.gateway, job.gateway),
                 failure,
             )
+            failure.ticket = job.ticket
         elif action.stage == _Stage.PAGE:
             # The authenticated response carries a continuation flag or a failure.
             if action.data[:1] not in (b"0", b"1") or not action.data[1:]:
@@ -331,11 +333,23 @@ class MailboxRuntime:
             action, (MailboxStep, MailboxTimeout, DHTResult, Placed, Reconstructed, VaultFailed)
         ):
             return False
-        job = self._jobs.get(action.token)
+        job_token, _, lookup_ticket = action.token.partition("/")
+        job = self._jobs.get(job_token)
         if job is None:
             return isinstance(action, (MailboxStep, MailboxTimeout)) or action.token.startswith(
                 "mailbox-"
             )
+        if not job.egress:
+            if isinstance(action, DHTResult) and (
+                lookup_ticket != job.ticket or job.pending is None or job.pending.stage != _Stage.LOOKUP
+            ):
+                return True
+            if (
+                isinstance(action, (MailboxStep, MailboxTimeout))
+                and action.ticket
+                and action.ticket != job.ticket
+            ):
+                return True
         if not job.egress and not self.sim.clients.people[job.recipient].polling_enabled:
             self._restore(job)
             return True
@@ -401,9 +415,13 @@ class MailboxRuntime:
                         lane=job.lane,
                         message_id=job.message_id,
                         continuation=job.step(_Stage.REQUEST, job.recipient, job.recipient),
+                        ticket=job.ticket,
                     )
                     self.sim.retrieval.reply(
-                        job.ticket, page, job.step(_Stage.PAGE, job.recipient, job.recipient), failure
+                        job.ticket,
+                        page,
+                        replace(job.step(_Stage.PAGE, job.recipient, job.recipient), ticket=job.ticket),
+                        failure,
                     )
                     job.pending = None
             elif isinstance(action, Reconstructed):

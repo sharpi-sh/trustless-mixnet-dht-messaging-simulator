@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .retrieval import RetrievalCallback
 from .steps import Action
 from .storage import MessageManifest
 
@@ -18,12 +19,10 @@ class VaultWrite(Action):
 
 
 @dataclass(kw_only=True)
-class VaultRead(Action):
+class VaultRead(RetrievalCallback):
     index: int
     replica: int
     generation: int = 0
-    data: bytes = field(default=b"", repr=False)
-    ticket: str = field(default="", repr=False)
 
 
 @dataclass(kw_only=True)
@@ -202,13 +201,13 @@ class VaultRuntime:
     def handle(self, action: Action) -> bool:
         sim = self.sim
         if isinstance(action, VaultWrite):
-            job = self.writes[action.token]
-            fragment = job.manifest.fragments[action.index]
+            write = self.writes[action.token]
+            fragment = write.manifest.fragments[action.index]
             try:
                 sim.storage.put(
                     action.target,
                     fragment,
-                    job.ciphertext[fragment.offset : fragment.offset + fragment.size],
+                    write.ciphertext[fragment.offset : fragment.offset + fragment.size],
                 )
                 ok = True
             except (ValueError, KeyError):
