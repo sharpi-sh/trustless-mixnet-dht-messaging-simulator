@@ -111,7 +111,7 @@ def test_stream_waits_for_publication_even_when_background_steps_are_already_que
     asyncio.run(scenario())
 
 
-def test_first_playback_update_is_the_real_departure_even_after_many_background_batches(monkeypatch):
+def test_timed_polls_publish_before_first_departure_without_dht_only_frames_or_dwell(monkeypatch):
     import app.service as module
 
     async def scenario():
@@ -119,18 +119,32 @@ def test_first_playback_update_is_the_real_departure_even_after_many_background_
         monkeypatch.setattr(module, "FIRST_HOP_STEP_LIMIT", 2)
         monkeypatch.setattr(module, "STREAM_BATCH_STEPS", 1)
         service = Service()
-        lab = service.create(Config(random_seed=422, dht_nodes=3, step_delay_ms=1000))
+        lab = service.create(Config(random_seed=422, dht_nodes=3, polling_interval_ms=1000, step_delay_ms=1000))
         try:
             await service.command(lab, command(lab, "run"))
             cursor = len(lab.events)
-            await asyncio.wait_for(service.wait(lab.id, 0, cursor), 3)
+            poll_seen = False
+            async with asyncio.timeout(2):
+                while lab.first_message_hop_sequence is None:
+                    await service.wait(lab.id, 0, cursor)
+                    if lab.first_message_hop_sequence is None:
+                        visible = lab.events[cursor:]
+                        assert any(
+                            e.event_type.startswith("poll_")
+                            or e.event_type.startswith("path_transit_")
+                            and e.payload["token"].startswith("poll-")
+                            for e in visible
+                        )
+                        poll_seen = True
+                        cursor = len(lab.events)
+            assert poll_seen
             departure = lab.first_message_hop_sequence
             assert departure is not None
             assert lab.events[departure - 1].source_id == "sender-1"
             assert lab.events[departure - 1].payload["transit_id"] in lab.in_flight
             assert any(
                 e.event_type == "path_transit_completed" and not e.message_id
-                for e in lab.events[cursor : departure - 1]
+                for e in lab.events[: departure - 1]
             )
         finally:
             await service.close()

@@ -34,6 +34,7 @@ class MailboxItem(Action):
 class _Pull:
     token: str
     route: tuple[str, str, str, str, str]
+    reserved_at_step: int = 0
     reserved: list[bytes] = field(default_factory=list, repr=False)
     cells: tuple[bytes, ...] = field(default_factory=tuple, repr=False)
 
@@ -55,9 +56,13 @@ class PollRuntime:
             self.sim.schedule(PollClock(source=uid), self.sim.rng.randrange(1, interval + 1))
 
     def cancel(self, person_id: str) -> None:
-        pull = self.active.pop(person_id, None)
-        if pull is not None and pull.reserved:
-            self.sim.inboxes[person_id].messages[:0] = pull.reserved
+        pulls = [pull for pull in self.active.values() if pull.route[0] == person_id]
+        for pull in sorted(pulls, key=lambda p: p.reserved_at_step, reverse=True):
+            self._release(pull)
+
+    def _release(self, pull: _Pull) -> None:
+        del self.active[pull.token]
+        self.sim.inboxes[pull.route[0]].messages[:0] = pull.reserved
 
     def _enabled(self, uid: str) -> bool:
         return self.sim.clients.people[uid].polling_enabled and self.sim.topology.nodes[uid].online
@@ -68,7 +73,7 @@ class PollRuntime:
             return
         sim.schedule(action, sim.config.polling_interval_ms)
         uid = action.source
-        if not self._enabled(uid) or uid in self.active:
+        if not self._enabled(uid):
             return
         person = sim.clients.people[uid]
         provider = next(
@@ -79,7 +84,7 @@ class PollRuntime:
         self._serial += 1
         token = f"poll-{self._serial}"
         pull = _Pull(token, (uid, person.tor.id, provider, person.tor.id, uid))
-        self.active[uid] = pull
+        self.active[token] = pull
         sim.emit(
             "poll_started",
             Action(source=uid, target=provider, token=token),
@@ -101,14 +106,14 @@ class PollRuntime:
     def _arrive(self, action: PollHop) -> None:
         sim = self.sim
         uid = action.person_id
-        pull = self.active.get(uid)
-        if pull is None or pull.token != action.token:
+        pull = self.active.get(action.token)
+        if pull is None:
             return
         if not self._enabled(uid):
             self.cancel(uid)
             return
         if not sim.topology.nodes[action.target].online:
-            self.cancel(uid)
+            self._release(pull)
             sim.emit("poll_failed", action, reason="Receiving node unavailable", person_id=uid)
             return
         sim.channel_crossing(uid, action, entering=action.hop in (1, 3))
@@ -117,6 +122,7 @@ class PollRuntime:
             batch = sim.config.poll_batch
             reserved = inbox.messages[:batch]
             pull.cells = inbox.poll(batch, CELL_BYTES)
+            pull.reserved_at_step = sim.serial
             pull.reserved = reserved
             sim.emit(
                 "poll_response_prepared",
@@ -128,7 +134,7 @@ class PollRuntime:
         if action.hop < 4:
             self._transit(pull, action.hop + 1)
             return
-        del self.active[uid]
+        del self.active[action.token]
         found = 0
         for cell in pull.cells:
             length = int.from_bytes(cell[:2], "big")
@@ -155,10 +161,12 @@ class PollRuntime:
         elif isinstance(action, PollHop):
             self._arrive(action)
         elif isinstance(action, PollFailure):
-            pull = self.active.get(action.person_id)
-            if pull and pull.token == action.token:
-                self.cancel(action.person_id)
-                self.sim.emit("poll_failed", action, reason="Path unresponsive")
+            pull = self.active.get(action.token)
+            if pull:
+                self._release(pull)
+                self.sim.emit(
+                    "poll_failed", action, reason="Path unresponsive", person_id=action.person_id
+                )
         else:
             return False
         return True
