@@ -16,7 +16,7 @@ The experimental adapter can place an opaque lookup handle in the associated pro
 
 ### What appears first on the diagram
 
-The DHT bootstraps at logical time zero. Each sender queues its encrypted message and waits for its own Loopix payload clock to fire. That packet starts at the sender’s device and crosses its Tor boundary before reaching the provider. DHT bootstrap, cover traffic and client polling can all precede the first payload.
+The DHT bootstraps at logical time zero. Each sender queues its encrypted message and waits for its own Loopix payload clock to fire. That packet starts at the sender’s device and crosses its selected connection channel before reaching the provider. DHT bootstrap, cover traffic and client polling can all precede the first payload.
 
 ### Providers and retrieval privacy
 
@@ -24,4 +24,6 @@ West and East indicate the client groups served by the two simulated provider se
 
 An extension for independent operators would need a directory of signed provider descriptors, authenticated addresses and keys, admission rules that limit Sybil registrations, and a client selection policy using capacity and availability. Clients could register with multiple providers. Failover of existing mailboxes would also require replicated encrypted mailbox state, duplicate suppression and a way to find the new provider. A load balancer alone only distributes work within one provider service. Multiple providers holding the same mailbox state would gain additional opportunities for correlation. These are proposed changes to the experimental application.
 
-A recipient polls its provider, resolves the encrypted manifest and fetches encrypted fragments through its own Tor boundary. These reads bypass the mix layers. A vault sees ciphertext and access patterns. An observer able to compare times or repeated identifiers across services could link a deposit and retrieval. Routing requests and replies through independent mix paths, with padded and scheduled reads, would change this exposure and increase retrieval latency. The simulator provides no end-to-end anonymity guarantee.
+A recipient polls its provider, resolves the encrypted manifest and fetches encrypted fragments through its own connection channel. These reads bypass the mix layers. A vault sees ciphertext and access patterns. An observer able to compare times or repeated identifiers across services could link a deposit and retrieval. Routing requests and replies through independent mix paths, with padded and scheduled reads, would change this exposure and increase retrieval latency. The simulator provides no end-to-end anonymity guarantee.
+
+Tor is the default device channel. The Outline Shadowsocks profile represents a proxy that learns the client IP and connects to the next service from its own IP. Direct access exposes the device IP to that service. All addresses are simulated. [Outline security and privacy](https://support.getoutline.org/about/security-and-privacy/)

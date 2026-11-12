@@ -40,7 +40,16 @@ class Availability:
     def __init__(self, config: Config, topology: Topology, rng: Random):
         self.config = config
         self.topology = topology
-        self.node_rng = {uid: Random(rng.getrandbits(128)) for uid in sorted(topology.nodes)}
+        self.direct_owners = {
+            channel: person
+            for person, channel in topology.channel_ids.items()
+            if topology.nodes[channel].kind == "direct"
+        }
+        self.node_rng = {
+            uid: Random(rng.getrandbits(128))
+            for uid in sorted(topology.nodes)
+            if uid not in self.direct_owners
+        }
         operators = sorted({node.operator_id for node in topology.nodes.values()})
         self.operator_rng = {uid: Random(rng.getrandbits(128)) for uid in operators}
         self.members: dict[str, list[str]] = defaultdict(list)
@@ -123,8 +132,9 @@ class Availability:
     def _scheduled(self) -> Schedule:
         windows: dict[str, list[tuple[int, int]]] = defaultdict(list)
         for outage in self.config.scheduled_outages:
-            if outage.duration_ms and outage.node_id not in self.permanent:
-                windows[outage.node_id].append((outage.start_ms, outage.start_ms + outage.duration_ms))
+            uid = self.direct_owners.get(outage.node_id, outage.node_id)
+            if outage.duration_ms and uid not in self.permanent:
+                windows[uid].append((outage.start_ms, outage.start_ms + outage.duration_ms))
         schedule: Schedule = []
         for uid, intervals in windows.items():
             merged: list[tuple[int, int]] = []

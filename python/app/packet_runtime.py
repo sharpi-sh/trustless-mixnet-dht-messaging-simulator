@@ -1,4 +1,4 @@
-"""Execute Loopix source, Tor, link and queue transitions on the logical clock."""
+"""Execute Loopix source, access-channel, link and queue transitions on the logical clock."""
 
 from __future__ import annotations
 
@@ -327,14 +327,13 @@ class PacketRuntime:
             traffic=packet.kind,
             attempt=packet.attempt,
         )
-        if node.kind == "tor":
-            self.sim.clients.people[packet.source_id].tor.enter()
-            self.sim.emit("tor_entry", action, packet_id=packet.id)
+        channel = self.sim.topology.channel_ids.get(packet.source_id)
+        if node.id == channel:
+            self.sim.channel_crossing(packet.source_id, action, entering=True, packet_id=packet.id)
             self._transit(packet, action, node.id, packet.first_node)
             return
-        if self.sim.topology.nodes[action.source].kind == "tor":
-            self.sim.clients.people[packet.source_id].tor.exit()
-            self.sim.emit("tor_exit", action, packet_id=packet.id)
+        if action.source == channel:
+            self.sim.channel_crossing(packet.source_id, action, entering=False, packet_id=packet.id)
         try:
             hop = self.traffic.process(packet.id, node.id, self.sim.now)
         except ValueError as err:

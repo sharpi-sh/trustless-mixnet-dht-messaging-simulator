@@ -39,6 +39,8 @@ def test_each_participant_owns_independent_key_tor_and_log():
         "id",
         "label",
         "role",
+        "channel",
+        "channel_id",
         "tor_id",
         "fingerprint",
         "signing_fingerprint",

@@ -125,7 +125,7 @@ async def info() -> Info:
             "device logs",
             "lineage",
         ],
-        protocols=profiles(cfg),
+        protocols=profiles(cfg, all_channels=True),
     )
 
 

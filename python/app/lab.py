@@ -82,8 +82,14 @@ class Laboratory(StorageSimulation):
         if kind == "path_transit_started" and isinstance(action, Transit) and action.message_id:
             details["cargo"] = self.cargo(action.success)
             if self.first_message_hop_sequence is None and isinstance(action.success, PacketArrival):
-                person = self.clients.people.get(action.source)
-                if person is not None and action.target == person.tor.id:
+                packet = self.packets.traffic.packets[action.token]
+                person = self.clients.people[packet.source_id]
+                first = (
+                    (person.tor.id, packet.first_node)
+                    if person.tor.kind == "direct"
+                    else (person.id, person.tor.id)
+                )
+                if (action.source, action.target) == first:
                     self.first_message_hop_sequence = len(self.events) + 1
         super().emit(kind, action, **details)
         row = project(self.events[-1])

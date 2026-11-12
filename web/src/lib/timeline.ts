@@ -4,6 +4,8 @@ export const categories = [
   'All events',
   'Participants',
   'Tor',
+  'Outline Shadowsocks',
+  'Direct connection',
   'Mixnet',
   'DHT',
   'Storage',
@@ -37,6 +39,10 @@ function categoryMatch(
       return touches('person') || name.startsWith('device_');
     case 'Tor':
       return touches('tor') || name.startsWith('tor_');
+    case 'Outline Shadowsocks':
+      return touches('shadowsocks') || name.startsWith('shadowsocks_');
+    case 'Direct connection':
+      return touches('direct') || name.startsWith('direct_');
     case 'Mixnet':
       return /^(mix|sphinx|cover_|packet_)/.test(name);
     case 'DHT':

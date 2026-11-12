@@ -19,6 +19,10 @@
     <path
       d="M12 2c.4 4.6 7.5 7.5 7.5 13a7.5 7.5 0 0 1-15 0C4.5 10 11.7 6.6 12 2Z"
     /><path d="M12 7c0 3.1 4 5.2 4 8.7a4 4 0 0 1-8 0C8 13.2 10.7 10.5 12 7Z" />
+  {:else if kind === 'shadowsocks'}
+    <path d="M2 10 22 3l-6 18-4-7-10-4Zm10 4L22 3" />
+  {:else if kind === 'direct'}
+    <path d="M8 7h8v5a4 4 0 0 1-8 0V7Zm2 0V3m4 4V3m-2 13v5h8" />
   {:else if kind === 'provider'}
     <path d="M3 8h18l-2 12H5L3 8Zm3-3h12M8 12h8m-7 4h6" /><circle
       cx="17.5"

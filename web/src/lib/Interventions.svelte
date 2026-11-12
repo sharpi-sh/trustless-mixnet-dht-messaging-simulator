@@ -150,12 +150,13 @@
           {path.source_id} ↔ {path.target_id} ·
           <strong>{path.blocked ? 'Blocked' : 'Available'}</strong>
         </p>
-        <button
-          {disabled}
-          onclick={() => {
-            if (path) void changeRoute('path', !path.blocked, path.id);
-          }}>{path.blocked ? 'Restore path' : 'Block path'}</button
-        >
+        {#if path.local}<p>Local handoff on the device.</p>{:else}<button
+            {disabled}
+            onclick={() => {
+              if (path) void changeRoute('path', !path.blocked, path.id);
+            }}>{path.blocked ? 'Restore path' : 'Block path'}</button
+          >
+        {/if}
       {:else}<p>Select a path on the map or in the inspector.</p>{/if}
       <label class="boundary"
         >Stage boundary<select {disabled} bind:value={boundary}

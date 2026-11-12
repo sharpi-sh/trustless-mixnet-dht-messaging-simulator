@@ -21,3 +21,5 @@ Connect to `/ws`, then send a `subscribe` command with the simulation ID and a u
 A successfully verified receipt in the recipient’s device log contains `verified_signer_id` and `signing_fingerprint`. The latter is the SHA-256 digest of the pinned Ed25519 public key. The lineage events `message_signed` and `sender_signature_verified` expose the signer ID and fingerprint. Private keys, signature bytes and message text stay out of network telemetry.
 
 Every simulation decision runs in Python. A UI may interpolate a position between the current clock and the next scheduled logical step. Only Python can complete or fail a transit. Interactive request schemas are available at the bound service’s `/docs`.
+
+Set `sender_channel` and `recipient_channel` independently when creating a simulation. Both default to `tor` and also accept `shadowsocks` or `direct`. In topology data, `ip_hops` describes each path direction. A traversal’s `ip_hop` records the addresses visible for that event.

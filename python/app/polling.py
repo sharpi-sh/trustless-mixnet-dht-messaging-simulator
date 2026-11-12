@@ -1,4 +1,4 @@
-"""Periodic participant pulls through their own Tor boundary and Loopix provider."""
+"""Periodic participant pulls through their own access channel and Loopix provider."""
 
 from dataclasses import dataclass, field
 
@@ -107,13 +107,11 @@ class PollRuntime:
         if not self._enabled(uid):
             self.cancel(uid)
             return
-        tor = sim.clients.people[uid].tor
-        if action.hop in (1, 3):
-            tor.enter()
-            sim.emit("tor_entry", action)
-        else:
-            tor.exit()
-            sim.emit("tor_exit", action)
+        if not sim.topology.nodes[action.target].online:
+            self.cancel(uid)
+            sim.emit("poll_failed", action, reason="Receiving node unavailable", person_id=uid)
+            return
+        sim.channel_crossing(uid, action, entering=action.hop in (1, 3))
         if action.hop == 2:
             inbox = sim.inboxes[uid]
             batch = sim.config.poll_batch

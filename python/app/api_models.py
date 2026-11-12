@@ -4,12 +4,12 @@ from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import Field, JsonValue, StrictBool, StringConstraints, model_validator
 
-from .config import Config, Model
+from .config import ChannelKind, Config, Model
 from .devices import Lineage
 from .events import Event
 from .participants import DeviceLog, Direction, Role
 from .profiles import Profile
-from .topology import MixNode, Node
+from .topology import IPHop, MixNode, Node
 
 CommandType = Literal[
     "subscribe",
@@ -98,7 +98,7 @@ class MixDTO(MixNode):
 
 
 class BasicNodeDTO(Node):
-    kind: Literal["person", "tor", "provider", "dht", "storage"]
+    kind: Literal["person", "tor", "shadowsocks", "direct", "provider", "dht", "storage"]
 
 
 NodeDTO: TypeAlias = Annotated[MixDTO | BasicNodeDTO, Field(discriminator="kind")]
@@ -119,6 +119,8 @@ class PathDTO(Model):
     target_id: str
     boundary: str
     transport_label: str
+    ip_hops: dict[str, IPHop]
+    local: bool
     base_transit_delay_ms: int
     jitter_min_ms: int
     jitter_max_ms: int
@@ -141,6 +143,8 @@ class DeviceDTO(Model):
     id: str
     label: str
     role: Role
+    channel: ChannelKind
+    channel_id: str
     tor_id: str
     fingerprint: str
     signing_fingerprint: str
