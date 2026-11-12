@@ -17,7 +17,7 @@ This is a thought experiment implemented as a local simulation of the relevant h
 The simulator makes an end-to-end message journey visible and inspectable:
 
 - multiple people sending text messages and anonymous replies;
-- a separate Tor abstraction for every participant;
+- an independently configured connection channel for each participant (Tor, Outline Shadowsocks or direct);
 - the Loopix 2017 stratified mixnet algorithm, including independent source routes, Sphinx packet processing, exponential per-hop delays and Poisson cover traffic;
 - the original 2002 Kademlia DHT algorithm, including 160-bit IDs, XOR distance, `k = 20` buckets, `alpha = 3` parallel lookups and the defined RPC behaviour;
 - encrypted message chunking, replicated distributed storage, retrieval and reconstruction;
@@ -95,7 +95,7 @@ Transfers between network nodes traverse a Python-owned `NetworkPath` with its o
 
 ## Code components
 
-- **Python simulation engine (`python/`):** people, cryptographic identities, Tor abstractions, Loopix providers and mix nodes, Kademlia DHT nodes, storage nodes, network steps, scheduling, availability and message processing.
+- **Python simulation engine (`python/`):** people, cryptographic identities, connection channels, Loopix providers and mix nodes, Kademlia DHT nodes, storage nodes, network steps, scheduling, availability and message processing.
 - **FastAPI service:** typed HTTP commands, health and state endpoints, plus a WebSocket event stream.
 - **SvelteKit/Vite web client (`web/`):** connection and configuration screens, controls, algorithm inspectors and event timeline.
 - **D3/SVG visualisation:** topology, actual routes, alternatives, failures, retries and node state.
@@ -160,11 +160,13 @@ Open the local URL printed by Vite, enter the backend port or URL, test the conn
 
 ## Operating the laboratory
 
-**Configuration** groups the sender, receiver and mix counts. Choose the pairing, exchanges, polling, outage pattern and seed. Advanced settings control transport, cover traffic, DHT, storage and retries. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
+**Configuration** groups the sender, receiver and mix counts. Choose the sender and recipient connection channels independently, along with pairing, exchanges, polling, outage pattern and seed. Advanced settings control transport, cover traffic, DHT, storage and retries. **Create simulation** generates an editable plan. **Save messages** applies edits before the run.
 
-**Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. During ordinary playback, Python advances through background traffic and applies the playback delay to message activity. The timeline retains the intervening events. **Step to first message hop** processes bootstrap and cover events until a device starts sending its first message to Tor, then pauses with the packet in transit. The playback slider accepts 0 ms to remove the wall-clock wait; logical transit and mixing delays still apply. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
+**Run**, **Pause**, **Resume** and **Step** operate on the Python event queue. During ordinary playback, Python advances through background traffic and applies the playback delay to message activity. The timeline retains the intervening events. **Step to first message hop** processes bootstrap and cover events until a device starts sending its first message over a remote link, then pauses with the packet in transit. The playback slider accepts 0 ms to remove the wall-clock wait; logical transit and mixing delays still apply. **Stop** ends the run. **Reset** rebuilds the editable plan from the original seed with fresh keys. Choosing the same configuration and seed reproduces network decisions.
 
 In **Network topology**, select a card or use **Inspect node** for local protocol state, paths and event history. **Fit graph** brings the columns into view. The upper lane carries forward traffic and the lower lane carries independently routed replies. **All transports** includes dormant physical links. Each message and reply has its own colour. Select a coloured line to inspect its recorded traversals and the cargo present at departure. The conversation panes show sent and received messages in local device-log order, with simulation timestamps. **Full screen** expands the diagram; use **Close full screen** or Escape to return. The Kademlia inspector shows contacts learned by the selected peer.
+
+The device cards show simulated IP addresses. Inspect a journey line to see which source address the receiving node observed on that traversal. With Outline Shadowsocks, Alice connects from her device IP to the proxy. The provider sees the proxy's IP when the proxy forwards her request. With direct access the provider sees Alice's device IP. With Tor the model shows separate entry and exit addresses. Bob uses his own selected channel for polling, retrieval and replies. These addresses describe the transport hop and are separate from sender signature verification.
 
 Use **Runtime controls** to change receiver polling, take a selected node offline, or block and restore a path or stage boundary. A block affects new attempts immediately. The optional in-flight control also drops packets already on those paths. The event timeline shows what Python observed, and the lineage ledger links keys, ciphertext and storage operations for the selected message.
 

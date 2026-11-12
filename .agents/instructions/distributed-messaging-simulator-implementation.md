@@ -692,38 +692,15 @@ Each device signs every forward message and reply with its own Ed25519 private k
 
 The application assumes authentic directory pins at setup. Display names and participant IDs represent simulated devices. External identity verification, device compromise and directory compromise remain outside the model.
 
-## 4.4 TorNetwork
+## 4.4 Participant connection channels
 
-Tor must be represented as a proper object for consistency, but it is an abstraction.
+Each participant owns a connection channel. Sender and recipient roles can independently select Tor (the default), Outline Shadowsocks or a direct request. References elsewhere to participant Tor boundaries describe the default profile. The selected channel applies to message transmission, provider polling, DHT access, vault retrieval and replies originating at that device.
 
-Each `Person` owns an independent `TorNetwork` instance:
+- Tor models a single boundary with distinct guard and exit addresses. Circuit construction, relay selection and onion encryption are outside the simulation.
+- Outline Shadowsocks models a proxy with a client-facing address and a server egress address. The proxy sees the device's IP on entry. The next service sees the proxy's IP. The simulation represents address visibility without implementing the Shadowsocks wire protocol.
+- Direct requests use the device's own network-facing IP. The diagram can represent its local interface. The first remote service observes the device IP.
 
-- `alice.tor_network`
-- `bob.tor_network`
-- and so on.
-
-Suggested properties:
-
-- `tor_id`
-- `owner_person_id`
-- `status`
-- `entry_event_count`
-- `exit_event_count`
-- `last_activity`
-- `simulated_exit_identity`
-
-Responsibilities:
-
-- accept a request from its owner
-- emit a Tor-entry event
-- abstractly forward the request to the mixnet ingress
-- emit a Tor-exit/delivery event
-- return the response to its owner
-- model availability/failure if configured
-
-Do not implement Tor circuits, relays, onion encryption, guard selection or real Tor networking. Tor is a single simulated component/function boundary. Its internal relay path is intentionally outside scope.
-
-The diagram must show Alice's Tor and Bob's Tor as separate instances.
+Label both channel columns by role and show each device's simulated IP address on its card. Each recorded journey segment must expose the source and destination IPs for that direction, identify the observer and preserve the cargo inspection. Transport addresses are independent of signed application identity. A channel choice changes device access to the network. Loopix routes for message deposit and the existing retrieval policy still apply.
 
 ## 4.5 Mixnet manager
 
