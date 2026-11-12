@@ -169,7 +169,7 @@
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active);
         const planned =
-            !pinned && ['running', 'paused'].includes(lab.status)
+            showAll && !pinned && ['running', 'paused'].includes(lab.status)
               ? traces.chosen.get(p.id)
               : undefined,
           observed = traces.seen.get(p.id);
@@ -524,6 +524,7 @@
             data-path-state={e.state}
             class={'edge ' + e.state}
             class:substrate={e.substrate}
+            class:context={!showAll && !e.known && e.p.id !== selectedPath}
             onclick={() => onPath(e.p.id)}
             onkeydown={(ev) => handleKey(ev, () => onPath(e.p.id))}
           >
@@ -755,6 +756,7 @@
           <g
             class="marker"
             class:background={!m.leg}
+            class:concealed={!showAll && !m.leg}
             data-message-id={m.leg?.messageId}
             data-transit-id={m.id}
             data-retry={m.retry}
@@ -1191,6 +1193,15 @@
   }
   .marker-hit {
     cursor: pointer;
+  }
+  .edge.context.active .stroke,
+  .edge.context.completed .stroke {
+    stroke: #a3afa7;
+    stroke-width: 1;
+    opacity: 0.3;
+  }
+  .marker.concealed {
+    display: none;
   }
   .marker.background {
     opacity: 0.35;
