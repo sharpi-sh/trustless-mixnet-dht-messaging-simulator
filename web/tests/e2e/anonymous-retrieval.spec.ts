@@ -27,7 +27,7 @@ test('shows mixed manifest and fragment exchanges during a signed round trip', a
   const final = await backend.state(id);
   expect(Object.values(final.outcomes)).toEqual(['received', 'received']);
   await page
-    .getByLabel('Event category', { exact: true })
+    .getByRole('combobox', { name: /^Event category/ })
     .selectOption('Anonymous retrieval');
   for (const operation of ['fragment', 'manifest']) {
     await page.getByLabel('Search events', { exact: true }).fill(operation);
