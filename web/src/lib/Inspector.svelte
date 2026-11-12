@@ -27,6 +27,13 @@
   let path = $derived(
     !node ? lab.topology.paths.find((p) => p.id === selectedPath) : undefined,
   );
+  let offlineEndpoint = $derived(
+    path &&
+      lab.topology.nodes.find(
+        (n) =>
+          !n.online && (n.id === path?.source_id || n.id === path?.target_id),
+      ),
+  );
   let info = $derived(node && details?.node.id === node.id ? details : null);
   let protocolState = $derived(info?.state ?? {});
   let device = $derived(lab.devices.find((d) => d.id === node?.id));
@@ -469,8 +476,12 @@
         <small>Network path</small>
         <h2>{path.transport_label}</h2>
       </div>
-      <span class:offline={path.blocked} class="status"
-        >{path.blocked ? 'Blocked' : 'Available'}</span
+      <span class:offline={path.blocked || !!offlineEndpoint} class="status"
+        >{path.blocked
+          ? 'Blocked'
+          : offlineEndpoint
+            ? 'Endpoint offline'
+            : 'Available'}</span
       >
     </header>
     <p>

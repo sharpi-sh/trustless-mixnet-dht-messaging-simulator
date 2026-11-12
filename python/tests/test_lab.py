@@ -89,9 +89,34 @@ def test_unreachable_sender_finishes_with_bounded_failure():
     attempts = [
         e for e in lab.events if e.event_type == "mixnet_route_constructed" and e.message_id == first.id
     ]
-    assert [e.payload["attempt"] for e in attempts] == [1, 2]
+    assert not attempts
+    waits = [e.payload["attempt"] for e in lab.events if e.event_type == "device_unavailable"]
+    assert waits == [1, 2]
+    assert not any(e.event_type == "message_encrypted" for e in lab.events)
     logs = [
         entry for p in lab.clients.people.values() for entry in p.logs if entry.message_id == first.id
     ]
     assert any(entry.state == "failed" for entry in logs)
     assert all(entry.state != "received" for entry in logs)
+
+
+def test_key_lineage_matches_ciphertext_containers_and_recipient_fingerprints():
+    lab = Laboratory(config())
+    lab.lifecycle("run")
+    for _ in lab.drain(20000):
+        if lab.status != "running":
+            break
+    assert lab.status == "completed"
+    for msg in lab.clients.messages.values():
+        rows = {r["operation"]: r for r in lab.lineage if r["message_id"] == msg.id}
+        digest = rows["message_encrypted"]["artefact"]
+        assert (
+            digest == rows["message_reconstructed"]["artefact"] == rows["message_chunked"]["artefact"]
+        )
+        assert (
+            digest
+            == rows["reply_key_encapsulated"]["container"]
+            == rows["reply_key_learned"]["container"]
+        )
+        assert rows["reply_key_learned"]["artefact"] == lab.clients.people[msg.sender_id].fingerprint
+        assert rows["public_key_retrieved"]["artefact"] == lab.clients.people[msg.target_id].fingerprint

@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import type { LabClient } from './api';
   import type { Snapshot, LabEvent, NodeDetails } from './types';
   import NetworkGraph from './NetworkGraph.svelte';
   import Inspector from './Inspector.svelte';
+  import Interventions from './Interventions.svelte';
+  import EventTimeline from './EventTimeline.svelte';
+  import LineageLedger from './LineageLedger.svelte';
 
   let {
     lab,
@@ -16,6 +19,9 @@
     client: LabClient;
     connected: boolean;
   } = $props();
+  let inspectedRoute = $state<LabEvent | null>(null);
+  let inspectorAnchor: HTMLDivElement;
+  let graphAnchor: HTMLDivElement;
   let selectedNode = $state('');
   let selectedPath = $state('');
   let details = $state<NodeDetails | null>(null);
@@ -77,6 +83,17 @@
     clearTimeout(timer);
     timer = undefined;
   }
+  async function inspectFromHistory(id: string, kind: 'node' | 'path') {
+    if (kind === 'node') chooseNode(id);
+    else choosePath(id);
+    await tick();
+    inspectorAnchor.scrollIntoView({ block: 'start' });
+  }
+  async function inspectRoute(event: LabEvent) {
+    inspectedRoute = event;
+    await tick();
+    graphAnchor.scrollIntoView({ block: 'start' });
+  }
   function choosePeer(id: string, pathId: string) {
     chooseNode(id);
     selectedPath = pathId;
@@ -92,15 +109,24 @@
   });
 </script>
 
-<NetworkGraph
-  {lab}
-  {events}
-  {selectedNode}
-  {selectedPath}
-  {details}
-  onNode={chooseNode}
-  onPath={choosePath}
-/>
+<div bind:this={graphAnchor}>
+  {#if inspectedRoute}<div class="inspector-tools">
+      Recorded route · {inspectedRoute.message_id} · {inspectedRoute.payload
+        .packet_id}<button onclick={() => (inspectedRoute = null)}
+        >Clear recorded route</button
+      >
+    </div>{/if}
+  <NetworkGraph
+    {inspectedRoute}
+    {lab}
+    {events}
+    {selectedNode}
+    {selectedPath}
+    {details}
+    onNode={chooseNode}
+    onPath={choosePath}
+  />
+</div>
 <div class="inspector-tools">
   <label
     >Inspect node
@@ -126,16 +152,27 @@
   </label>
 </div>
 {#if error}<p role="alert" class="error">{error}</p>{/if}
-<Inspector
+<Interventions {lab} {selectedNode} {selectedPath} {client} {connected} />
+<div bind:this={inspectorAnchor}>
+  <Inspector
+    {lab}
+    {details}
+    {selectedNode}
+    {selectedPath}
+    {events}
+    onPeer={choosePeer}
+    onNode={chooseNode}
+    onPath={choosePath}
+  />
+</div>
+<EventTimeline
   {lab}
-  {details}
-  {selectedNode}
-  {selectedPath}
   {events}
-  onPeer={choosePeer}
-  onNode={chooseNode}
-  onPath={choosePath}
+  onRoute={inspectRoute}
+  onNode={(id) => inspectFromHistory(id, 'node')}
+  onPath={(id) => inspectFromHistory(id, 'path')}
 />
+<LineageLedger {lab} onNode={(id) => inspectFromHistory(id, 'node')} />
 
 <style>
   .inspector-tools {

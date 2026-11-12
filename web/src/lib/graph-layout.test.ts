@@ -1,12 +1,15 @@
 import { expect, test } from 'vitest';
 import {
   contactIds,
+  extractRoute,
+  makeTraceHistory,
+  transitEndpoints,
   laneCurve,
   layoutTopology,
   onCurve,
   transitFraction,
 } from './graph-layout';
-import type { LabNode, NodeDetails, Path } from './types';
+import type { LabEvent, LabNode, NodeDetails, Path } from './types';
 
 function node(id: string, kind: LabNode['kind'], stage_index: number): LabNode {
   return {
@@ -118,4 +121,69 @@ test('shows only the selected DHT node’s actual bucket contacts', () => {
   expect([...contactIds(details, 'dht-1')]).toEqual(['dht-2', 'dht-4']);
   expect(contactIds(details, 'dht-2').size).toBe(0);
   expect(contactIds(null, 'dht-1').size).toBe(0);
+});
+
+test('extracts the exact reported route with its lane, repeats and retry attempt', () => {
+  const event: LabEvent = {
+    event_type: 'mixnet_route_constructed',
+    event_id: 'evt-13',
+    sequence: 13,
+    simulation_time_ms: 80,
+    simulation_id: 'lab-1',
+    step_id: 'step-4',
+    source_id: 'sender-1',
+    target_id: 'west',
+    message_id: 'msg-2',
+    conversation_id: 'conversation-1',
+    payload: {
+      packet_id: 'pkt-7',
+      attempt: 2,
+      lane: 'reply',
+      ordered_route: ['west', 'mix-2', 'west'],
+    },
+  };
+  const route = extractRoute(event)!;
+  expect(route.nodes).toEqual(['west', 'mix-2', 'west']);
+  expect(route.legs).toEqual([
+    { id: 'mix-2~west', source: 'west', target: 'mix-2', lane: 'reply' },
+    { id: 'mix-2~west', source: 'mix-2', target: 'west', lane: 'reply' },
+  ]);
+  expect(route.retry).toBe(true);
+  expect(
+    extractRoute({ ...event, event_type: 'path_transit_completed' }),
+  ).toBeNull();
+  expect(
+    extractRoute({
+      ...event,
+      payload: { ...event.payload, ordered_route: ['west', null, 'east'] },
+    }),
+  ).toBeNull();
+  const history = makeTraceHistory();
+  expect(history('first', [event]).retries.has('pkt-7')).toBe(true);
+  expect(history('reset', []).retries.size).toBe(0);
+});
+
+test('counts actual sources, destinations and retries independently at shared nodes', () => {
+  const base = { start_ms: 1, end_ms: 9, lane: 'forward' as const };
+  const rows = transitEndpoints(
+    [
+      { ...base, source: 'A', target: 'B', token: 'pkt-1' },
+      { ...base, source: 'B', target: 'A', token: 'pkt-2', lane: 'reply' },
+      { ...base, source: 'C', target: 'B', token: 'pkt-3' },
+    ],
+    new Set(['pkt-2']),
+  );
+  expect(rows.get('B')).toEqual({
+    outgoing: 1,
+    incoming: 2,
+    outgoingRetries: 1,
+    incomingRetries: 0,
+  });
+  expect(rows.get('A')).toEqual({
+    outgoing: 1,
+    incoming: 1,
+    outgoingRetries: 0,
+    incomingRetries: 1,
+  });
+  expect(rows.has('D')).toBe(false);
 });

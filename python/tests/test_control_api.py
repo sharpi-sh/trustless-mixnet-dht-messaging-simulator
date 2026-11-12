@@ -64,3 +64,16 @@ def test_websocket_reconnect_snapshot_and_live_delta():
             ws.send_json({"type": "reset", "command_id": "r", "simulation_id": sid})
             assert ws.receive_json()["type"] == "ack"
             assert ws.receive_json()["state"]["epoch"] == 1
+
+
+def test_previous_epoch_can_replay_a_receipt_but_cannot_apply_a_new_intervention():
+    with TestClient(app) as c:
+        sid = c.post("/api/simulations", json={"random_seed": 42}).json()["simulation_id"]
+        url = f"/api/simulations/{sid}"
+        reset = {"type": "reset", "simulation_id": sid, "command_id": "r", "epoch": 0}
+        for _ in range(2):
+            assert c.post(url + "/commands", json=reset).status_code == 200
+        stale = {**reset, "type": "set_polling_enabled", "enabled": False, "command_id": "p"}
+        assert c.post(url + "/commands", json=stale).status_code == 409
+        assert c.get(url).json()["epoch"] == 1
+        assert all(row["polling_enabled"] for row in c.get(url).json()["devices"])

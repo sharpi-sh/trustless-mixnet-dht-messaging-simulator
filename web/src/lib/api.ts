@@ -27,6 +27,7 @@ const reason = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
 const backoff = [250, 500, 1000, 2000, 4000];
 type Reply = Record<string, Json>;
+class BackendRejection extends Error {}
 type Frame =
   | { type: 'backend_ready'; api_version: string }
   | {
@@ -344,7 +345,7 @@ export class LabClient {
     if (frame.type === 'error') {
       this.set({ error: frame.detail, feedback: 'Command rejected' });
       if (frame.command_id)
-        this.settle(frame.command_id, new Error(frame.detail));
+        this.settle(frame.command_id, new BackendRejection(frame.detail));
       if (frame.command_id === this.subscription)
         this.settle(this.ready, new Error(frame.detail));
       return;
@@ -462,7 +463,13 @@ export class LabClient {
     try {
       return await response;
     } catch (err) {
-      this.set({ feedback: 'Command unconfirmed', error: reason(err) });
+      this.set({
+        feedback:
+          err instanceof BackendRejection
+            ? 'Command rejected'
+            : 'Command unconfirmed',
+        error: reason(err),
+      });
       throw err;
     }
   }

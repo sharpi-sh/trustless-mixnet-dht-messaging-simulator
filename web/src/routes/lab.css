@@ -432,3 +432,125 @@ footer {
     font-size: 0.68rem;
   }
 }
+
+.records {
+  margin: 16px 0;
+  padding: 20px;
+  background: var(--panel, white);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.record-head,
+.record-pages,
+.record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.record-head h2,
+.record-head h3 {
+  margin: 0;
+}
+.record-head small,
+.record-pages small,
+.record-note,
+.records-empty,
+.record-lead {
+  color: var(--muted);
+}
+.record-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+.records label {
+  font-size: 0.79rem;
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+.records select,
+.records input {
+  max-width: 16rem;
+  font: inherit;
+}
+.record-scroll {
+  max-height: 26rem;
+  overflow: auto;
+  border-block: 1px solid var(--border);
+}
+.records table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  text-align: left;
+  font-size: 0.8rem;
+}
+.records td,
+.records th {
+  padding: 7px 9px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.records th {
+  position: sticky;
+  top: 0;
+  background: var(--soft);
+  z-index: 1;
+}
+.records td:first-child,
+.records td:nth-child(2),
+.records code {
+  font-family: var(--mono);
+}
+.records td:first-child {
+  white-space: nowrap;
+}
+.records td small {
+  display: block;
+  color: var(--muted);
+}
+.records code {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+.record-pages,
+.record-actions {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+.records .record-link {
+  border: 0;
+  background: transparent;
+  color: #285a47;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: left;
+  font: inherit;
+  min-height: 0;
+}
+.records .chosen,
+.event-detail {
+  background: var(--soft);
+}
+.event-detail {
+  padding: 14px;
+  margin-top: 12px;
+  border-radius: 6px;
+}
+.event-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 21rem;
+  overflow: auto;
+}
+.record-note,
+.record-lead,
+.records-empty {
+  font-size: 0.82rem;
+  margin-bottom: 0;
+}

@@ -1,9 +1,11 @@
 import itertools
 from collections import Counter
 
+import pytest
+
 from app.config import Config
-from app.engine import Engine
-from app.packet_runtime import PacketDelivered, PacketFailed, PacketRuntime, TrafficClock
+from app.engine import Engine, Intervention, Transit
+from app.packet_runtime import PacketArrival, PacketDelivered, PacketFailed, PacketRuntime, TrafficClock
 from app.steps import Action
 
 
@@ -148,3 +150,160 @@ def test_client_loop_reaches_own_polling_inbox_and_mix_loop_returns_over_links()
     expected = ["mix-1", *mix.route.nodes]
     assert hops == list(itertools.pairwise(expected))
     assert hops[-1][1] == "mix-1"
+
+
+def start_payload(sim):
+    sim.runtime.outbox["sender-1"].append(("msg-1", "receiver-1", b"envelope", "forward"))
+    sim.schedule(TrafficClock(source="sender-1", kind="payload"))
+
+
+def set_online(sim, uid, online):
+    sim.intervene(
+        Intervention(
+            command="availability", target=uid, enabled=online, token=f"availability-{uid}-{sim.serial}"
+        )
+    )
+
+
+def event_rows(sim, kind, packet):
+    return [e for e in sim.events if e.event_type == kind and e.payload.get("token") == packet.id]
+
+
+@pytest.mark.parametrize("node_id", ["tor-sender-1", "provider-east"])
+def test_offline_after_arrival_prevents_processing(node_id):
+    sim = PacketEngine()
+    start_payload(sim)
+    sim.through(
+        lambda: (
+            isinstance(sim.queue[0][2].action, PacketArrival)
+            and sim.queue[0][2].action.target == node_id
+        )
+    )
+    packet = sim.runtime.traffic.packets[sim.queue[0][2].action.token]
+    set_online(sim, node_id, False)
+    sim.through(lambda: packet.status == "failed")
+    assert not [
+        e for e in event_rows(sim, "message_forward_succeeded", packet) if e.target_id == node_id
+    ]
+    assert not [e for e in event_rows(sim, "sphinx_layer_processed", packet) if e.target_id == node_id]
+    if node_id.startswith("tor"):
+        assert sim.clients.people["sender-1"].tor.entry_count == 0
+    else:
+        assert sim.runtime.traffic.sphinx.replay_count(node_id) == 0
+    assert not sim.terminal
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "queue owner offline",
+        "offline before dispatch",
+        "link blocked",
+        "target offline",
+        "drop in flight",
+        "offline observer",
+    ],
+)
+def test_only_dispatched_mix_hops_update_live_observer(failure):
+    sim = PacketEngine()
+    start_payload(sim)
+    sim.through(
+        lambda: any(
+            p.queued_at and p.queued_at.startswith("mix-") for p in sim.runtime.traffic.packets.values()
+        )
+    )
+    packet = next(
+        p
+        for p in sim.runtime.traffic.packets.values()
+        if p.queued_at and p.queued_at.startswith("mix-")
+    )
+    source, target = packet.queued_at, packet.expected_node
+    node = sim.topology.nodes[source]
+    edge = sim.topology.paths[sim.topology.path_id(source, target)]
+    if failure == "queue owner offline":
+        set_online(sim, source, False)
+    else:
+        sim.through(
+            lambda: (
+                isinstance(sim.queue[0][2].action, Transit) and sim.queue[0][2].action.source == source
+            )
+        )
+        if failure == "offline before dispatch":
+            set_online(sim, source, False)
+        elif failure == "link blocked":
+            sim.intervene(Intervention(command="path", target=edge.id, enabled=False, token="block"))
+        else:
+            sim.advance()
+            assert edge.active
+            if failure == "drop in flight":
+                sim.intervene(
+                    Intervention(
+                        command="path", target=edge.id, enabled=False, drop_in_flight=True, token="drop"
+                    )
+                )
+            else:
+                set_online(sim, target, False)
+                if failure == "offline observer":
+                    set_online(sim, source, False)
+    sim.through(lambda: packet.status == "failed")
+    assert packet.id not in node.delayed_packets and packet.queued_at is None
+    assert edge.attempted == int(failure != "queue owner offline")
+    assert sum(e.source_id == source for e in event_rows(sim, "mix_packet_released", packet)) == int(
+        failure != "queue owner offline"
+    )
+    observed = failure in {"target offline", "drop in flight"}
+    assert node.adjacent_peers[target].failures == int(observed)
+    assert (
+        bool(
+            [
+                e
+                for e in event_rows(sim, "mixnet_adjacency_updated", packet)
+                if e.payload["observation"] == "unresponsive"
+            ]
+        )
+        == observed
+    )
+    if observations := event_rows(sim, "path_transit_failed", packet):
+        assert observations[0].payload["dispatched"] == (observed or failure == "offline observer")
+    assert event_rows(sim, "sphinx_layer_processed", packet)[-1].target_id != target
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+def test_offline_source_wait_is_bounded_and_produces_no_packet(recovery):
+    sim = PacketEngine()
+    set_online(sim, "sender-1", False)
+    start_payload(sim)
+    sim.advance()
+    assert not sim.runtime.traffic.packets and len(sim.runtime.outbox["sender-1"]) == 1
+    if recovery:
+        set_online(sim, "sender-1", True)
+    sim.through(lambda: bool(sim.terminal))
+    [result] = sim.terminal
+    if recovery:
+        assert isinstance(result, PacketDelivered) and result.payload == b"envelope"
+    else:
+        assert isinstance(result, PacketFailed) and result.reason == "Source unavailable"
+        assert sim.now == (1 + sim.config.max_retries) * sim.config.ack_timeout_ms
+        assert not sim.runtime.traffic.packets
+    assert not sim.runtime.outbox["sender-1"]
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+def test_retry_waits_for_live_source(recovery):
+    sim = PacketEngine()
+    start_payload(sim)
+    sim.advance()
+    packet = next(iter(sim.runtime.traffic.packets.values()))
+    set_online(sim, "sender-1", False)
+    sim.through(lambda: packet.status == "failed")
+    assert packet.retry_id is None
+    if recovery:
+        set_online(sim, "sender-1", True)
+    sim.through(lambda: bool(sim.terminal))
+    [result] = sim.terminal
+    if recovery:
+        assert isinstance(result, PacketDelivered) and packet.retry_id is not None
+        assert sim.runtime.traffic.packets[packet.retry_id].route.seed != packet.route.seed
+    else:
+        assert isinstance(result, PacketFailed) and packet.retry_id is None
+    assert packet.original_payload == b""

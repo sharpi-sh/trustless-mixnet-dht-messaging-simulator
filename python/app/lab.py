@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 
 from .config import Config
@@ -29,6 +30,7 @@ class Laboratory(StorageSimulation):
         self.polls = PollRuntime(self)
         self.mailbox = MailboxRuntime(self)
         self.outcomes = {uid: "staged" for uid in self.clients.messages}
+        self.device_retries: dict[tuple[str, str], int] = {}
         self.deferred: dict[str, BundleDelivered] = {}
         self.order: dict[str, list[str]] = {}
         for msg in self.clients.messages.values():
@@ -79,9 +81,27 @@ class Laboratory(StorageSimulation):
                             del self.deferred[uid]
                             self.schedule(bundle)
 
-    def compose(self, uid: str) -> None:
+    def device_available(self, uid: str, action: Action) -> bool:
+        key = (uid, action.message_id)
+        if self.topology.nodes[uid].online:
+            self.device_retries.pop(key, None)
+            return True
+        attempt = self.device_retries.get(key, 0) + 1
+        self.emit("device_unavailable", action, person_id=uid, attempt=attempt)
+        if attempt > self.config.max_retries:
+            self.device_retries.pop(key, None)
+            self.failure(action.message_id, f"{uid} unavailable for local processing")
+        else:
+            self.device_retries[key] = attempt
+            self.schedule(action, self.config.ack_timeout_ms)
+        return False
+
+    def compose(self, action: Compose) -> None:
+        uid = action.message_id
         msg = self.clients.messages[uid]
         if self.outcomes[uid] != "staged":
+            return
+        if not self.device_available(msg.sender_id, action):
             return
         ctx = Action(source=msg.sender_id, target=msg.target_id, message_id=uid, lane=msg.direction)
         wire, fingerprint = self.devices.prepare(msg)
@@ -93,9 +113,14 @@ class Laboratory(StorageSimulation):
             else "decrypted unverified reply key",
             fingerprint=fingerprint,
         )
-        self.emit("reply_key_encapsulated", ctx, container=uid, field="encrypted reply public key")
+        digest = sha256(wire[32:]).hexdigest()
+        self.emit("reply_key_encapsulated", ctx, container=digest, field="encrypted reply public key")
         self.emit(
-            "message_encrypted", ctx, size=len(wire) - 32, algorithm="X25519/HKDF-SHA-256/AES-256-GCM"
+            "message_encrypted",
+            ctx,
+            artefact_id=digest,
+            size=len(wire) - 32,
+            algorithm="X25519/HKDF-SHA-256/AES-256-GCM",
         )
         state: DeliveryState = "sent" if msg.direction == "forward" else "replied"
         self.devices.log(msg, msg.sender_id, state, self.now, msg.text)
@@ -110,6 +135,8 @@ class Laboratory(StorageSimulation):
         if not self.clients.people[msg.target_id].polling_enabled:
             self.deferred[msg.id] = action
             return
+        if not self.device_available(msg.target_id, action):
+            return
         self.devices.log(msg, msg.target_id, "delivered", self.now, "")
         try:
             learned = self.devices.accept(msg, action.ciphertext, self.now)
@@ -119,8 +146,11 @@ class Laboratory(StorageSimulation):
         if learned is None:
             return
         ctx = Action(source=msg.target_id, message_id=msg.id, lane=msg.direction)
-        self.emit("message_decrypted", ctx, integrity="verified")
-        self.emit("reply_key_learned", ctx, fingerprint=learned, authentication="unverified")
+        digest = sha256(action.ciphertext).hexdigest()
+        self.emit("message_decrypted", ctx, container=digest, integrity="verified")
+        self.emit(
+            "reply_key_learned", ctx, fingerprint=learned, container=digest, authentication="unverified"
+        )
         self.emit("device_log_updated", ctx, person_id=msg.target_id, state="received")
         self.outcomes[msg.id] = "received"
         series = self.order[msg.conversation_id]
@@ -150,7 +180,7 @@ class Laboratory(StorageSimulation):
 
     def handle(self, action: Action) -> bool:
         if isinstance(action, Compose):
-            self.compose(action.message_id)
+            self.compose(action)
         elif isinstance(action, BundleDelivered):
             self.received(action)
         elif isinstance(action, (MailboxFailed, PacketFailed)):
