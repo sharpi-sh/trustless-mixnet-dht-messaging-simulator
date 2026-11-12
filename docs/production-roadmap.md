@@ -63,3 +63,11 @@ That is not the preferred privacy deployment. A machine hosting several roles be
 **Current state:** the faithful Loopix 2017 profile does not perform a batch shuffle. It applies independent exponentially distributed holding times at each mix, Poisson payload and cover clocks, and path delay with jitter. Concurrent packets can therefore leave in a different order naturally, but no code deliberately shuffles a batch.
 
 **Production work:** implement this only as a separately named mix profile with its own paper, parameters, threat model and tests. It must not silently change the behaviour while retaining the Loopix 2017 label.
+
+## 8. Provider endpoint discovery and gateway routing
+
+**Meaning:** a device needs a safe way to turn its selected provider identity into a reachable IPv4, IPv6, DNS or onion-service endpoint. This is the bootstrap step before Tor, Outline Shadowsocks or a direct connection can hand packets to that provider.
+
+**Current state:** there is no DNS or IP discovery. Python assigns every sender to the fixed West provider and every recipient to the fixed East provider inside the generated topology. West and East are diagram roles, not geographic routing decisions or public server addresses.
+
+**Production work:** publish signed, expiring provider descriptors containing the provider identity key, supported endpoint types, ports, transport keys, capacity and validity period. Clients should obtain matching descriptors from several independent directory sources, verify the signature, select a provider, and then connect using the participant's chosen channel. A Tor client should resolve a provider name through Tor or use an onion endpoint so local DNS does not reveal the destination. A direct connection exposes the device IP to the provider; an Outline connection exposes it to the proxy. DNS can be a convenient bootstrap mechanism, but a single DNS zone, CDN or reverse proxy creates a central control and observation point. Production clients should support multiple bootstrap sources, direct signed IP endpoints and key pinning rather than trusting DNS alone.
