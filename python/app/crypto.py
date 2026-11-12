@@ -131,10 +131,11 @@ def sign_bundle(
     message: StagedMessage, recipient_key: bytes, reply_key: bytes, signing_key: Ed25519PrivateKey
 ) -> bytes:
     bundle = encode_bundle(message.id, message.text, reply_key)
-    signature = signing_key.sign(_signature_input(message, recipient_key, bundle))
+    statement = _signature_input(message, recipient_key, bundle)
+    signature = signing_key.sign(statement)
     return (
         _SIGNED_HEADER.pack(_SIGNED_VERSION, signing_key.public_key().public_bytes_raw(), signature)
-        + bundle
+        + statement
     )
 
 
@@ -146,11 +147,18 @@ def verify_bundle(
     version, enclosed_key, signature = _SIGNED_HEADER.unpack_from(signed)
     if version != _SIGNED_VERSION or enclosed_key != trusted_key:
         raise ValueError("Sender signature format or identity key mismatch")
-    bundle = signed[_SIGNED_HEADER.size :]
+    statement = signed[_SIGNED_HEADER.size :]
     try:
-        Ed25519PublicKey.from_public_bytes(trusted_key).verify(
-            signature, _signature_input(message, recipient_key, bundle)
-        )
+        Ed25519PublicKey.from_public_bytes(trusted_key).verify(signature, statement)
     except InvalidSignature as exc:
         raise ValueError("Invalid sender signature") from exc
+    try:
+        fields = msgpack.unpackb(statement, raw=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Malformed signed message context") from exc
+    if not isinstance(fields, list) or len(fields) != 9 or not isinstance(fields[-1], bytes):
+        raise ValueError("Invalid signed message context")
+    bundle = fields[-1]
+    if statement != _signature_input(message, recipient_key, bundle):
+        raise ValueError("Sender signature does not match the expected delivery context")
     return decode_bundle(bundle)
