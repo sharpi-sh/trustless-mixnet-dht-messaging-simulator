@@ -15,7 +15,9 @@ async function configure(page: Page) {
     await field(name).fill(String(value));
   }
   await field('Enable receiver polling').uncheck();
-  await field('Node availability').selectOption('scheduled');
+  await page
+    .getByRole('combobox', { name: /^Node availability/ })
+    .selectOption('scheduled');
   for (const [i, [uid, start, duration]] of [
     ['mix-5', 5, 500],
     ['mix-15', 8, 500000],
@@ -82,6 +84,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   backend,
 }) => {
   test.setTimeout(240000);
+  page.setDefaultTimeout(15000);
   await page.setViewportSize({ width: 1500, height: 1000 });
   const errors: string[] = [];
   page.on('pageerror', (err) => errors.push(err.message));
@@ -125,7 +128,9 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   const path = initial.topology.paths.find(
     (p) => p.source_id === 'sender-1' && p.target_id === 'tor-sender-1',
   )!;
-  await field('Inspect path').selectOption(path.id);
+  await page
+    .getByRole('combobox', { name: /^Inspect path/ })
+    .selectOption(path.id);
   await button('Run').click();
   await button('Block path').click();
   const graph = page.getByRole('group', {
@@ -277,7 +282,9 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     lineage.indexOf('message_decrypted'),
   );
 
-  await field('Inspect node').selectOption('receiver-1');
+  await page
+    .getByRole('combobox', { name: /^Inspect node/ })
+    .selectOption('receiver-1');
   const inspector = page.getByRole('complementary', {
     name: 'Node inspector',
     exact: true,
@@ -289,8 +296,14 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(
     page.getByRole('heading', { name: 'Event timeline', exact: true }),
   ).toBeVisible();
-  await chooseFilter(field('Timeline message'), 'msg-1');
-  await chooseFilter(field('Event category'), 'Failures/retries');
+  await chooseFilter(
+    page.getByRole('combobox', { name: /^Timeline message/ }),
+    'msg-1',
+  );
+  await chooseFilter(
+    page.getByRole('combobox', { name: /^Event category/ }),
+    'Failures/retries',
+  );
   const timeline = page.getByRole('region', {
     name: 'Event timeline',
     exact: true,
@@ -312,7 +325,10 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(
     page.getByRole('heading', { name: 'Cryptographic lineage', exact: true }),
   ).toBeVisible();
-  await chooseFilter(field('Lineage message'), 'msg-1');
+  await chooseFilter(
+    page.getByRole('combobox', { name: /^Lineage message/ }),
+    'msg-1',
+  );
   const ledger = page.getByRole('region', {
     name: 'Cryptographic lineage',
     exact: true,
@@ -361,7 +377,7 @@ test('applies selected-receiver, node and stage-boundary interventions to Python
     });
   const button = (name: string) =>
     panel.getByRole('button', { name, exact: true });
-  const inspect = page.getByLabel('Inspect node', { exact: true });
+  const inspect = page.getByRole('combobox', { name: /^Inspect node/ });
   await inspect.selectOption('receiver-2');
   await button('Disable receiver polling').click();
   const polling = async () =>
@@ -396,7 +412,7 @@ test('applies selected-receiver, node and stage-boundary interventions to Python
     .sort();
   expect(expected.length).toBeGreaterThan(1);
   await panel
-    .getByLabel('Stage boundary', { exact: true })
+    .getByRole('combobox', { name: /^Stage boundary/ })
     .selectOption(boundary);
   await panel
     .getByRole('checkbox', { name: 'Drop traffic already in flight' })
