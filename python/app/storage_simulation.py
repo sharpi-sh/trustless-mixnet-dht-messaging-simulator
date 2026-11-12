@@ -1,6 +1,7 @@
 from .config import Config
 from .dht_runtime import DHTRuntime
 from .network import NetworkSimulation
+from .retrieval import RetrievalTransport
 from .steps import Action
 from .vault_runtime import VaultRuntime
 
@@ -8,6 +9,7 @@ from .vault_runtime import VaultRuntime
 class StorageSimulation(NetworkSimulation):
     def __init__(self, config: Config, simulation_id: str | None = None):
         super().__init__(config, simulation_id)
+        self.retrieval = RetrievalTransport(self)
         self.rpc = DHTRuntime(self)
         self.vaults = VaultRuntime(self)
 
@@ -22,4 +24,9 @@ class StorageSimulation(NetworkSimulation):
             self.rpc.availability(uid, online)
 
     def handle(self, action: Action) -> bool:
-        return self.rpc.handle(action) or self.vaults.handle(action) or super().handle(action)
+        return (
+            self.retrieval.handle(action)
+            or self.rpc.handle(action)
+            or self.vaults.handle(action)
+            or super().handle(action)
+        )

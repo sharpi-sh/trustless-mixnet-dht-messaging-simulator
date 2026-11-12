@@ -214,6 +214,11 @@ class Topology:
                     self.connect(a, b, "Loopix datagram")
         self.dht_ids = [f"dht-{i + 1}" for i in range(config.dht_nodes)]
         self.storage_ids = [f"storage-{i + 1}" for i in range(config.storage_nodes)]
+        self.service_gateways = {
+            uid: self.mixnet.providers[i % len(self.mixnet.providers)]
+            for ids in (self.dht_ids, self.storage_ids)
+            for i, uid in enumerate(ids)
+        }
         for i, dht in enumerate(self.dht_ids):
             self.add_node(dht, f"DHT {i + 1}", "dht", 7, "DHT")
             for peer in self.dht_ids[:i]:
@@ -222,6 +227,7 @@ class Topology:
                 self.connect(provider, dht, "opaque application handoff")
         for i, store in enumerate(self.storage_ids):
             self.add_node(store, f"Vault {i + 1}", "storage", 8, "Vault")
+            self.connect(self.service_gateways[store], store, "anonymous retrieval service attachment")
             for dht in self.dht_ids:
                 self.connect(dht, store, "encrypted fragment transfer")
         for person in people.people.values():
@@ -229,10 +235,6 @@ class Topology:
             self.connect(
                 person.tor.id, provider, f"{_CHANNEL_EGRESS[person.tor.kind]} → Loopix provider"
             )
-            for dht in self.dht_ids:
-                self.connect(person.tor.id, dht, "opaque mailbox lookup")
-            for storage in self.storage_ids:
-                self.connect(person.tor.id, storage, "encrypted fragment transfer")
 
     def add_node(self, uid: str, label: str, kind: Any, col: int, stage: str) -> Node:
         index = len(self.nodes)

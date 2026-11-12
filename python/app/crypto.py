@@ -22,11 +22,11 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from .participants import StagedMessage
 
-Purpose = Literal["bundle", "manifest"]
+Purpose = Literal["bundle", "manifest", "retrieval"]
 _HEADER = Struct("!4sBB32s12s")
 _MAGIC = b"MXRE"
 _VERSION = 1
-_PURPOSE_ID: dict[Purpose, int] = {"bundle": 1, "manifest": 2}
+_PURPOSE_ID: dict[Purpose, int] = {"bundle": 1, "manifest": 2, "retrieval": 3}
 _DOMAIN = b"mixnet-laboratory/recipient-envelope/X25519-HKDF-SHA256-AES256GCM\x00"
 
 

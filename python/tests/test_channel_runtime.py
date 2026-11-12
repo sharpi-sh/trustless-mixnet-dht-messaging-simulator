@@ -90,22 +90,19 @@ def test_channels_carry_signed_messages_polls_lookups_and_vault_responses(sender
         retrieval = [
             e for e in starts if e.message_id == msg.id and channel.id in (e.source_id, e.target_id)
         ]
-        assert any(e.source_id == channel.id and e.target_id.startswith("dht-") for e in retrieval)
-        assert any(e.source_id.startswith("dht-") and e.target_id == channel.id for e in retrieval)
-        reads = [
-            e for e in retrieval if e.source_id == channel.id and e.target_id.startswith("storage-")
-        ]
-        responses = [
-            e for e in retrieval if e.source_id.startswith("storage-") and e.target_id == channel.id
-        ]
-        assert reads and responses
-        assert all(e.payload["ip_hop"]["observed_source_ip"] == channel.egress_address for e in reads)
-        assert all(e.payload["ip_hop"]["destination_ip"] == channel.egress_address for e in responses)
-        assert all(
-            e.payload["ip_hop"]["observed_source_ip"]
-            == lab.topology.nodes[e.source_id].simulated_address
-            for e in responses
+        gateway = lab.topology.mixnet.providers[int(owner.role == "receiver")]
+        assert not any(
+            uid.startswith(("storage-", "dht-"))
+            for event in retrieval
+            for uid in (event.source_id, event.target_id)
         )
+        assert any(e.source_id == channel.id and e.target_id == gateway for e in retrieval)
+        assert any(e.source_id == gateway and e.target_id == channel.id for e in retrieval)
+        assert {
+            e.payload["operation"]
+            for e in lab.events
+            if e.message_id == msg.id and e.event_type == "retrieval_reply_received"
+        } == {"manifest", "fragment"}
         assert any(
             e.payload["token"].startswith("poll-")
             and e.source_id == channel.id
