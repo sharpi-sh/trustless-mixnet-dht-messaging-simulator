@@ -288,6 +288,7 @@ class MailboxRuntime:
                 return
             if action.data[:1] == b"1" and len(action.data) != _PAGE_SIZE + 1:
                 raise ValueError("Incomplete manifest page")
+            job.retries = 0
             job.pages.extend(action.data[1:])
             job.ticket = ""
             if action.data[:1] == b"1":
@@ -381,7 +382,10 @@ class MailboxRuntime:
                     self._step(job, action)
             elif isinstance(action, VaultFailed):
                 assert job.pending is not None
-                self._retry(job, job.pending, action.reason, transit=False)
+                if job.egress:
+                    self._retry(job, job.pending, action.reason, transit=False)
+                else:
+                    self._fail(job, action.reason)
             elif isinstance(action, Placed):
                 job.pending = None
                 content = _ManifestContents(message_id=job.message_id, manifest=action.manifest)

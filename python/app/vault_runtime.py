@@ -23,6 +23,7 @@ class VaultRead(RetrievalCallback):
     index: int
     replica: int
     generation: int = 0
+    attempt: int = 0
 
 
 @dataclass(kw_only=True)
@@ -166,10 +167,10 @@ class VaultRuntime:
         for i in range(len(manifest.fragments)):
             self._read(action, i, 0)
 
-    def _read(self, action: Action, index: int, replica: int) -> None:
+    def _read(self, action: Action, index: int, attempt: int) -> None:
         job = self.reads[action.token]
         fragment = job.manifest.fragments[index]
-        if replica >= len(fragment.replicas):
+        if attempt >= len(fragment.replicas) * (self.sim.config.max_retries + 1):
             self.cancel_read(action.token)
             self.sim.schedule(
                 VaultFailed(
@@ -181,6 +182,7 @@ class VaultRuntime:
                 )
             )
             return
+        replica = attempt % len(fragment.replicas)
         service = fragment.replicas[replica]
         read = VaultRead(
             source=service,
@@ -191,6 +193,7 @@ class VaultRuntime:
             index=index,
             replica=replica,
             generation=job.generation,
+            attempt=attempt,
         )
         miss = VaultMiss(**vars(read), operation="read")
         self.sim.emit("fragment_retrieval_started", read, fragment_id=fragment.id, replica=replica + 1)
@@ -219,7 +222,7 @@ class VaultRuntime:
                 sim.storage.record_unavailable(action.target, f, "write")
                 self._settle_write(action, False)
             elif (active := self.reads.get(action.token)) and active.generation == action.generation:
-                self._read(action, action.index, action.replica + 1)
+                self._read(action, action.index, action.attempt + 1)
         elif isinstance(action, BytesReturned):
             job = self.reads.get(action.token)
             if job is None or job.tickets.get(action.index) != action.ticket:
@@ -231,7 +234,7 @@ class VaultRuntime:
                     raise ValueError("Replica could not return the requested fragment")
                 fragment.verify(data)
             except ValueError:
-                self._read(action, action.index, action.replica + 1)
+                self._read(action, action.index, action.attempt + 1)
                 return True
             job.tickets.pop(action.index)
             job.received[fragment.id] = data
@@ -275,6 +278,7 @@ class VaultRuntime:
                 replica=action.replica,
                 ticket=action.ticket,
                 generation=action.generation,
+                attempt=action.attempt,
             )
             miss = VaultMiss(**vars(action), operation="return")
             sim.retrieval.reply(action.ticket, payload, returned, miss)

@@ -138,6 +138,9 @@ def test_message_departures_capture_the_wire_at_each_hop():
     assert sphinx[0][2]["sha256"] == sphinx[1][2]["sha256"]
     assert sphinx[1][2]["sha256"] != sphinx[2][2]["sha256"]
     assert len(sphinx[0][2]["first_16_bytes_hex"]) == 32
-    assert {"Encrypted fragment", "Kademlia RPC", "Fragment request"} <= {
+    assert {"Encrypted fragment", "Kademlia RPC", "Anonymous retrieval"} <= {
         e.payload["cargo"]["kind"] for e in hops
     }
+    assert {
+        e.payload["cargo"]["phase"] for e in hops if e.payload["cargo"]["kind"] == "Anonymous retrieval"
+    } == {"request", "response"}
