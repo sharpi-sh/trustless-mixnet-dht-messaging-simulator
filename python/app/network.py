@@ -48,6 +48,12 @@ class NetworkSimulation(Engine):
                     }
                 )
             state.update(adjacent_peers=peers, delayed_packets=node.delayed_packets)
+        if node.kind == "provider":
+            state["queued_cells"] = sum(
+                len(self.inboxes[person.id].messages)
+                for person in self.clients.people.values()
+                if self.topology.mixnet.providers[int(person.role == "receiver")] == uid
+            )
         if node.kind in {"provider", "mix"}:
             state.update(
                 replay_tags=self.packets.traffic.sphinx.replay_count(uid),
@@ -61,7 +67,9 @@ class NetworkSimulation(Engine):
             tor = next(p.tor for p in self.clients.people.values() if p.tor.id == uid)
             state.update(owner=tor.owner_id, entries=tor.entry_count, exits=tor.exit_count)
         elif node.kind == "person":
-            state.update(self.clients.people[uid].device())
+            state.update(
+                self.clients.people[uid].device(), outbound_queue=len(self.packets.outbox[uid])
+            )
         return {
             "node": detail,
             "profile": next(p.model_dump() for p in self.registry if p.id == profile),

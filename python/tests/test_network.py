@@ -19,3 +19,15 @@ def test_inspectors_and_scheduled_cover_transport():
         "cover_packet_generated",
     } <= kinds
     assert not any(e.event_type == "simulation_error" for e in s.events)
+
+
+def test_provider_and_device_inspectors_count_only_their_local_queued_items():
+    s = NetworkSimulation(Config(random_seed=733))
+    s.inboxes["receiver-1"].messages.append(b"opaque receiver cell")
+    s.packets.outbox["sender-1"].append(("message", "receiver-1", b"ciphertext", "forward"))
+    assert s.inspect("provider-east")["state"]["queued_cells"] == 1
+    assert s.inspect("provider-west")["state"]["queued_cells"] == 0
+    assert s.inspect("sender-1")["state"]["outbound_queue"] == 1
+    assert s.inspect("receiver-1")["state"]["outbound_queue"] == 0
+    assert "opaque receiver cell" not in str(s.inspect("provider-east"))
+    assert "ciphertext" not in str(s.inspect("sender-1"))
