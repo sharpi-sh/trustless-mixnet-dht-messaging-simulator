@@ -203,7 +203,7 @@ The endpoint input is for a local development backend. Do not expose the Python 
 - Sender count is configurable from 1 to 10.
 - Receiver count is configurable from 1 to 10.
 - Mixnet node count is configurable within the range of 6 to 20, defaulting to 6.
-- Sender count, receiver count and mixnet node count appear together in the same network setup panel.
+- Network setup lists senders in individual rows followed by recipient rows. Each group has an add button below its participants. Each row identifies the participant and their connection channel. The mix count follows the two groups.
 - The user can choose a fixed mixnet node count or ask Python to randomise the count within the selected minimum and maximum.
 - The number of senders and receivers represents the number of separate `Person` instances Python creates.
 - A person is not a special Alice-only or Bob-only class. Alice, Bob and later participants are instances of the same `Person` class with different IDs, display names and roles in a communication scenario.
@@ -1204,7 +1204,7 @@ Fields/actions:
 ### B. Simulation configuration
 
 Sections:
-1. Network setup: sender count, receiver count and mixnet node count in one panel.
+1. Network setup includes the sender rows, recipient rows and mix node count in one panel.
 2. Receiver polling controls, including the initial enabled state.
 3. Conversation pairing.
 4. Message/exchange count from 1–10.
