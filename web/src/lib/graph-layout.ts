@@ -523,20 +523,35 @@ export function makeTraceHistory() {
   let messages = messageTrafficHistory();
   let plannedPacket: string | undefined;
   let epochKey = '',
-    last = 0;
+    lastSequence = 0,
+    firstSequence = Infinity;
   let seen = new Map<string, Trace>(),
     chosen = new Map<string, Trace>();
   return function history(key: string, rows: LabEvent[]) {
-    if (epochKey !== key || rows.length < last) {
+    const first = rows[0]?.sequence ?? Infinity;
+    const end = rows.at(-1)?.sequence ?? 0;
+    // A reconnect can backfill a full prefix after the graph first saw a partial window.
+    const backfilled = first < firstSequence && end >= lastSequence;
+    if (epochKey !== key || backfilled) {
       epochKey = key;
-      last = 0;
+      lastSequence = 0;
+      firstSequence = first;
       plannedPacket = undefined;
       retries.clear();
       messages = messageTrafficHistory();
       seen = new Map();
       chosen = new Map();
     }
-    for (let i = last; i < rows.length; i++) {
+    // Frames can overlap, shrink or slide at a fixed length within one epoch.
+    // Find new server sequence numbers without rescanning the full replay on every step.
+    let low = 0,
+      high = rows.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (rows[middle].sequence <= lastSequence) low = middle + 1;
+      else high = middle;
+    }
+    for (let i = low; i < rows.length; i++) {
       const e = rows[i],
         p = e.payload;
       const lane = p.lane === 'reply' ? 'reply' : 'forward';
@@ -576,7 +591,7 @@ export function makeTraceHistory() {
         });
       }
     }
-    last = rows.length;
+    lastSequence = Math.max(lastSequence, end);
     return {
       seen,
       chosen,

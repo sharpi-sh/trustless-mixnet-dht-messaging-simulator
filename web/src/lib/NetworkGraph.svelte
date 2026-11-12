@@ -189,18 +189,12 @@
           right.kind === 'dht' ||
           left.kind === 'storage' ||
           right.kind === 'storage';
-        if (substrate && !showAll && !important && !other && !p.completed)
-          return [];
+        if (substrate && !showAll && !important && !other) return [];
         if (
           left.kind === 'dht' &&
           right.kind === 'dht' &&
           !showAll &&
-          !known &&
-          !active.length &&
-          !p.completed &&
-          !p.blocked &&
-          p.id !== selectedPath &&
-          !recentFailure
+          !important
         )
           return [];
         const retryTracks = new Set(
@@ -294,38 +288,44 @@
   );
   let endpoints = $derived(
     transitEndpoints(
-      transits.map((m) => m.t),
+      transits.filter((m) => showAll || m.leg).map((m) => m.t),
       traces.retries,
     ),
   );
-  let visualTime = $state(0),
-    frameEpoch = '';
+  let markerTimes = $state.raw<Record<string, number>>({});
+  let frameEpoch = '';
   $effect(() => {
     const now = lab.simulation_time_ms,
       next = lab.next_step_ms,
-      status = lab.status,
       pace = lab.step_delay_ms;
-    const epoch = lab.simulation_id + ':' + lab.epoch,
-      hasTraffic = transits.length > 0;
-    let start = now;
-    if (frameEpoch === epoch)
-      start = Math.max(
-        now,
-        Math.min(
-          next ?? now,
-          untrack(() => visualTime),
-        ),
-      );
+    const running = lab.status === 'running';
+    const previous = frameEpoch === epoch ? untrack(() => markerTimes) : {};
     frameEpoch = epoch;
-    visualTime = start;
-    if (status !== 'running' || next === null || next <= start || !hasTraffic)
+    const flights = transits.map(({ id, t, leg }) => {
+      const start = Math.max(now, previous[id] ?? t.start_ms);
+      // Playback can batch a background action at this exact logical timestamp.
+      // A payload has its own reported arrival time, independent of the next action.
+      // The moving marker stays inside the link until Python retires the transit.
+      const end = leg ? t.end_ms : Math.min(t.end_ms, next ?? now);
+      return { id, start, end: Math.max(start, end) };
+    });
+    function positions(fraction: number) {
+      return Object.fromEntries(
+        flights.map(({ id, start, end }) => [
+          id,
+          start + (end - start) * fraction,
+        ]),
+      );
+    }
+    markerTimes = positions(0);
+    if (!running || !flights.some((flight) => flight.end > flight.start))
       return;
     const began = performance.now();
     let frame = 0;
     function draw(ts: number) {
-      const t = Math.min(1, (ts - began) / Math.max(1, pace));
-      visualTime = start + (next! - start) * t;
-      if (t < 1) frame = requestAnimationFrame(draw);
+      const fraction = Math.min(1, (ts - began) / Math.max(1, pace));
+      markerTimes = positions(fraction);
+      if (fraction < 1) frame = requestAnimationFrame(draw);
     }
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
@@ -552,6 +552,7 @@
             style:--message-colour={track.colour}
             data-message-id={track.messageId}
             data-message-path={track.pathId}
+            data-leg-status={track.latest.status}
             data-source={track.source}
             data-target={track.target}
             data-lane={track.lane}
@@ -573,6 +574,7 @@
                 .latest.status}</title
             >
             <path class="message-hit" d={track.curve.d} />
+            <path class="message-halo" d={track.curve.d} />
             <path class="message-line" d={track.curve.d} />
             {#if track.latest.status !== 'active'}
               <circle
@@ -580,7 +582,7 @@
                 data-history-leg={track.latest.id}
                 cx={track.dot.x}
                 cy={track.dot.y}
-                r="3.2"
+                r={Math.min(12, 4.4 / zoom)}
               />
             {/if}
           </g>
@@ -744,7 +746,11 @@
         {#each transits as m (m.id)}
           {@const pos = onCurve(
             m.curve,
-            transitFraction(visualTime, m.t.start_ms, m.t.end_ms),
+            transitFraction(
+              markerTimes[m.id] ?? lab.simulation_time_ms,
+              m.t.start_ms,
+              m.t.end_ms,
+            ),
           )}
           <g
             class="marker"
@@ -763,14 +769,17 @@
                 .end_ms} ms</title
             >
             <circle
-              r={m.leg ? 7 : 3.5}
+              r={m.leg ? Math.min(17, 7.5 / zoom) : 3}
               fill={m.leg ? 'white' : m.retry ? '#fff0dd' : '#d6f4df'}
               stroke={m.retry ? '#c0580a' : (m.colour ?? '#77867c')}
               stroke-width={m.leg ? 2 : 1}
-            /><circle r={m.leg ? 4.2 : 1.6} fill={m.colour ?? '#6b7f72'} />
+            /><circle
+              r={m.leg ? Math.min(10, 4.4 / zoom) : 1.2}
+              fill={m.colour ?? '#6b7f72'}
+            />
             {#if m.leg}
               <circle
-                r="8"
+                r={Math.min(20, 9 / zoom)}
                 fill="transparent"
                 class="marker-hit"
                 pointer-events="all"
@@ -1178,13 +1187,13 @@
   .edge.substrate.active .stroke {
     stroke: #728d7f;
     stroke-width: 1.3;
-    opacity: 0.65;
+    opacity: 0.36;
   }
   .marker-hit {
     cursor: pointer;
   }
   .marker.background {
-    opacity: 0.65;
+    opacity: 0.35;
   }
   .message-track {
     cursor: pointer;
@@ -1193,14 +1202,23 @@
   .message-track path {
     fill: none;
   }
+  .message-halo {
+    stroke: #fff;
+    stroke-width: 5.2;
+    pointer-events: none;
+  }
+  .message-track path,
+  .history-dot {
+    vector-effect: non-scaling-stroke;
+  }
   .message-hit {
     stroke: transparent;
-    stroke-width: 8;
+    stroke-width: 13;
     pointer-events: stroke;
   }
   .message-line {
     stroke: var(--message-colour);
-    stroke-width: 2.4;
+    stroke-width: 3.4;
     pointer-events: none;
   }
   .message-track.failed .message-line {
