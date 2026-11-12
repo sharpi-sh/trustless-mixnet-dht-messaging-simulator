@@ -137,6 +137,12 @@ for (const count of [6, 10, 20]) {
         ).size,
       );
       await expect(graph.locator('.band.person')).toHaveCount(0);
+      await expect(graph.locator('[data-group-id="loopix"] text')).toHaveText(
+        'Loopix',
+      );
+      await expect(graph.locator('[data-group-id="dht"] text')).toHaveText(
+        'DHT',
+      );
       const mixId = topology.find((n) => n.kind === 'mix')!.id;
       const mixCard = await graph
         .locator('[data-node-id="' + mixId + '"] [data-card]')

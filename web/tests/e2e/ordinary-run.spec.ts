@@ -130,6 +130,11 @@ for (const seed of [null, '2046379413032268']) {
       await expect(first).toHaveAttribute('data-leg-status', 'completed');
       // Click the actual retained SVG symbol with the simulation still running.
       await dot.click();
+      const journey = page.locator('[data-message-id="msg-1"]');
+      await expect(journey).not.toHaveCount(0);
+      await expect(
+        page.locator('[data-message-id="msg-1"][data-journey-selected="true"]'),
+      ).toHaveCount(await journey.count());
       const readout = page.locator('[data-selected-leg="' + movement.id + '"]');
       await expect(
         readout.getByText('Sphinx packet', { exact: true }),

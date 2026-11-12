@@ -6,6 +6,7 @@ import {
   makeTrackRenderer,
   messageColour,
   packetRetryNotice,
+  promoteJourney,
   transitEndpoints,
   laneCurve,
   layoutTopology,
@@ -66,6 +67,21 @@ test('keeps stage order and card bounds stable under changing node and path stat
     Math.abs(layout.nodes.get('alice')!.y - layout.height / 2),
   ).toBeLessThanOrEqual(4);
   expect(layout.stages.map((s) => s.index)).toEqual([1, 2, 3, 4, 5, 6]);
+  expect(
+    layout.groups.map((group) => [group.name, group.stageIndices]),
+  ).toEqual([
+    ['Loopix', [2, 3, 4]],
+    ['DHT', [5]],
+  ]);
+  for (const group of layout.groups) {
+    const members = layout.stages.filter((stage) =>
+      group.stageIndices.includes(stage.index),
+    );
+    expect(group.x).toBeLessThan(members[0].x);
+    expect(group.x + group.width).toBeGreaterThan(
+      members.at(-1)!.x + members.at(-1)!.width,
+    );
+  }
   for (const n of nodes.filter((n) => n.kind !== 'person')) {
     const p = layout.nodes.get(n.id)!,
       stage = layout.stages.find((s) => s.index === n.stage_index)!;
@@ -92,6 +108,22 @@ test('keeps stage order and card bounds stable under changing node and path stat
   expect(Array.from(again.nodes.values(), (n) => [n.id, n.x, n.y])).toEqual(
     rects.map((n) => [n.id, n.x, n.y]),
   );
+});
+
+test('promotes every leg of the selected message journey as one stable chain', () => {
+  const tracks = [
+    { id: 'first', messageId: 'msg-1' },
+    { id: 'chosen-a', messageId: 'msg-2' },
+    { id: 'third', messageId: 'msg-3' },
+    { id: 'chosen-b', messageId: 'msg-2' },
+  ];
+  expect(promoteJourney(tracks, 'msg-2').map((track) => track.id)).toEqual([
+    'first',
+    'third',
+    'chosen-a',
+    'chosen-b',
+  ]);
+  expect(promoteJourney(tracks)).toBe(tracks);
 });
 
 test('anchors participants at the chat edges, centred and stacked, with routed avatar ports', () => {

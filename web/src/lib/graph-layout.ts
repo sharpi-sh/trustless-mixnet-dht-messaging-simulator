@@ -38,11 +38,19 @@ export interface StageBand {
   count: number;
   kind: LabNode['kind'];
 }
+export interface StageGroup {
+  id: 'loopix' | 'dht';
+  name: 'Loopix' | 'DHT';
+  x: number;
+  width: number;
+  stageIndices: number[];
+}
 export interface GraphLayout {
   width: number;
   height: number;
   nodes: Map<string, GraphNode>;
   stages: StageBand[];
+  groups: StageGroup[];
 }
 type Point = { x: number; y: number };
 
@@ -221,7 +229,32 @@ export function layoutTopology(
     n.x = Math.round(Math.max(n.cx - 2, Math.min(n.cx + 2, n.x)));
     n.y = Math.round(Math.max(n.cy - 4, Math.min(n.cy + 4, n.y)));
   });
-  return { width, height, nodes: anchors, stages };
+  const stageGroups = (
+    [
+      [
+        'loopix',
+        'Loopix',
+        stages.filter(
+          (stage) => stage.kind === 'provider' || stage.kind === 'mix',
+        ),
+      ],
+      ['dht', 'DHT', stages.filter((stage) => stage.kind === 'dht')],
+    ] as const
+  ).flatMap(([id, name, members]) => {
+    if (!members.length) return [];
+    const start = Math.min(...members.map((stage) => stage.x));
+    const end = Math.max(...members.map((stage) => stage.x + stage.width));
+    return [
+      {
+        id,
+        name,
+        x: start - 3,
+        width: end - start + 6,
+        stageIndices: members.map((stage) => stage.index),
+      },
+    ];
+  });
+  return { width, height, nodes: anchors, stages, groups: stageGroups };
 }
 
 export interface Curve {
@@ -458,6 +491,18 @@ export function messageColour(id: string): string {
   if (!suffix) for (const c of id) index = (31 * index + c.charCodeAt(0)) >>> 0;
   if (index < messagePalette.length) return messagePalette[index];
   return `hsl(${((index * 137.508) % 360).toFixed(2)} 66% 37%)`;
+}
+
+export function promoteJourney<T extends { messageId: string }>(
+  tracks: T[],
+  selectedMessageId?: string,
+): T[] {
+  if (!selectedMessageId) return tracks;
+  return [...tracks].sort(
+    (a, b) =>
+      Number(a.messageId === selectedMessageId) -
+      Number(b.messageId === selectedMessageId),
+  );
 }
 
 export interface MessageLeg {
