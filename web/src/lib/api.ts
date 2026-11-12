@@ -121,6 +121,7 @@ export function applyDelta(s: Snapshot, d: Delta): Snapshot {
     sequence: d.sequence,
     simulation_time_ms: d.simulation_time_ms,
     next_step_ms: d.next_step_ms,
+    first_message_hop_sequence: d.first_message_hop_sequence,
     step_delay_ms: d.step_delay_ms,
     initialised: d.initialised,
     topology:

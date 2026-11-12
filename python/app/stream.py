@@ -110,6 +110,7 @@ def delta(lab: Laboratory, epoch: int, since: int) -> Delta:
             "status": lab.status,
             "initialised": lab.initialised,
             "step_delay_ms": lab.step_delay_ms,
+            "first_message_hop_sequence": lab.first_message_hop_sequence,
             "next_step_ms": lab.queue[0][0] if lab.queue else None,
             "nodes": [lab.topology.nodes[uid].model_dump() for uid in sorted(nodes)],
             "paths": [lab.topology.paths[uid].model_dump() for uid in sorted(paths)],

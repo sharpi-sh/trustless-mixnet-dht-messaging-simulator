@@ -168,6 +168,7 @@ export interface Topology {
   paths: Path[];
 }
 interface Clock {
+  first_message_hop_sequence: number | null;
   simulation_id: string;
   epoch: number;
   sequence: number;
@@ -202,6 +203,7 @@ export type CommandType =
   | 'pause'
   | 'resume'
   | 'step'
+  | 'step_to_first_message_hop'
   | 'stop'
   | 'reset'
   | 'set_playback_delay'

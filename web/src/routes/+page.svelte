@@ -262,6 +262,18 @@ npm run dev</code
               !['ready', 'paused'].includes(lab.status)}
             onclick={() => command('step')}>Step</button
           >
+          {#if lab.first_message_hop_sequence === null}
+            <button
+              disabled={!connected ||
+                pending ||
+                dirty ||
+                !['ready', 'paused'].includes(lab.status)}
+              aria-describedby="first-message-help"
+              onclick={() => command('step_to_first_message_hop')}
+            >
+              Step to first message hop
+            </button>
+          {/if}
           <button
             disabled={!connected ||
               pending ||
@@ -278,7 +290,7 @@ npm run dev</code
           <input
             aria-label="Playback delay"
             type="range"
-            min="1"
+            min="0"
             max="2000"
             step="1"
             value={lab.step_delay_ms}
@@ -292,6 +304,16 @@ npm run dev</code
           />
         </label>
       </div>
+      {#if lab.first_message_hop_sequence === null}
+        <p id="first-message-help" class="startup-hint">
+          Bootstrap and cover traffic can precede the sender’s first payload
+          clock tick. Step to first message hop runs those actions and pauses at
+          the device’s first message departure.
+          {#if lab.status === 'paused' && $store.events.at(-1)?.event_type === 'first_message_hop_step_finished'}
+            The step limit was reached. Use the control again to continue.
+          {/if}
+        </p>
+      {/if}
       <div class="summary-strip">
         <span>Seed <b>{lab.random_seed}</b></span><span
           >Devices <b>{lab.devices.length}</b></span
@@ -328,3 +350,11 @@ npm run dev</code
     >
   </footer>
 </main>
+
+<style>
+  .startup-hint {
+    margin: 0.35rem 0 0.5rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+</style>

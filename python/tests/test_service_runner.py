@@ -101,3 +101,41 @@ def test_background_failure_is_terminal_and_observable(monkeypatch):
         await service.close()
 
     asyncio.run(scenario())
+
+
+def test_zero_pacing_yields_between_steps_and_can_be_changed_live(monkeypatch):
+    async def scenario():
+        service = Service()
+        lab = service.create(Config(random_seed=21, step_delay_ms=0, base_transit_delay_ms=345))
+        advance = lab.advance
+        steps = 0
+
+        def guarded_advance():
+            nonlocal steps
+            steps += 1
+            if steps > 30:
+                raise RuntimeError("Runner starved the control task")
+            advance()
+
+        monkeypatch.setattr(lab, "advance", guarded_advance)
+        try:
+            await service.command(lab, command(lab, "run", "start"))
+            await asyncio.sleep(0)
+            assert 0 < steps < 30 and lab.status == "running"
+            await service.command(lab, command(lab, "pause", "pause"))
+            paused_steps = steps
+            await asyncio.sleep(0)
+            assert steps == paused_steps
+            await service.command(lab, command(lab, "set_playback_delay", "slow", delay_ms=2000))
+            await service.command(lab, command(lab, "resume", "resume"))
+            await asyncio.sleep(0)
+            before = steps
+            await service.command(lab, command(lab, "set_playback_delay", "fast", delay_ms=0))
+            await asyncio.wait_for(service.wait(lab.id, 0, len(lab.events)), 0.5)
+            assert steps > before and lab.snapshot()["step_delay_ms"] == 0
+            assert all(p.base_transit_delay_ms == 345 for p in lab.topology.paths.values())
+            await service.command(lab, command(lab, "stop", "stop"))
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())

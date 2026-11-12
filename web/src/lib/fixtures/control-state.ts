@@ -7,6 +7,7 @@ export const snapshot: Snapshot = {
   status: 'ready',
   simulation_time_ms: 0,
   next_step_ms: null,
+  first_message_hop_sequence: null,
   step_delay_ms: 500,
   random_seed: 147,
   config: {

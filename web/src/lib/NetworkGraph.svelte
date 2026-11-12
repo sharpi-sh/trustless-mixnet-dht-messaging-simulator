@@ -1,12 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type {
-    Snapshot,
-    LabEvent,
-    NodeDetails,
-    Path,
-    DeviceLog,
-  } from './types';
+  import type { Snapshot, LabEvent, NodeDetails, Path } from './types';
   import {
     layoutTopology,
     laneCurve,
@@ -14,10 +8,14 @@
     transitFraction,
     contactIds,
     makeTraceHistory,
+    messageColour,
+    type MessageLeg,
     extractRoute,
     transitEndpoints,
   } from './graph-layout';
   import GraphGlyph from './GraphGlyph.svelte';
+  import ConversationColumn from './ConversationColumn.svelte';
+  import { lastActivity, logicalStamp } from './conversation';
   let {
     lab,
     events,
@@ -27,6 +25,7 @@
     details,
     onNode,
     onPath,
+    onLeg,
   }: {
     lab: Snapshot;
     events: LabEvent[];
@@ -36,8 +35,45 @@
     details: NodeDetails | null;
     onNode: (id: string) => void;
     onPath: (id: string) => void;
+    onLeg?: (leg: MessageLeg) => void;
   } = $props();
   let viewport: HTMLDivElement;
+  let panel: HTMLElement;
+  let screenButton: HTMLButtonElement;
+  let expanded = $state(false),
+    autoFit = $state(true);
+  function toggleScreen() {
+    expanded = !expanded;
+    if (!expanded) screenButton.focus({ preventScroll: true });
+  }
+  $effect(() => {
+    if (!expanded) return;
+    // Keep keyboard navigation in the diagram while it covers the workspace.
+    const background: HTMLElement[] = [];
+    let branch: HTMLElement | null = panel;
+    while (branch && branch !== document.body && branch.parentElement) {
+      for (const sibling of branch.parentElement.children) {
+        if (
+          sibling instanceof HTMLElement &&
+          sibling !== branch &&
+          !sibling.inert
+        ) {
+          sibling.inert = true;
+          background.push(sibling);
+        }
+      }
+      branch = branch.parentElement;
+    }
+    return () => {
+      for (const sibling of background) sibling.inert = false;
+    };
+  });
+  function screenKey(e: KeyboardEvent) {
+    if (expanded && e.key === 'Escape') {
+      e.preventDefault();
+      toggleScreen();
+    }
+  }
   let zoom = $state(1),
     showAll = $state(false),
     width = $state(0);
@@ -66,6 +102,45 @@
   );
   const history = makeTraceHistory();
   let traces = $derived(history(lab.simulation_id + ':' + lab.epoch, events));
+  let pick = $state<{ epoch: string; id: string } | null>(null);
+  let epoch = $derived(lab.simulation_id + '/' + lab.epoch);
+  let selectedLeg = $derived(
+    pick?.epoch === epoch ? traces.legs.get(pick.id) : undefined,
+  );
+  let pathMap = $derived(
+    new Map(lab.topology.paths.map((path) => [path.id, path])),
+  );
+  let messageTracks = $derived.by(() =>
+    Array.from(traces.messageTracks.values()).flatMap((track) => {
+      const a = layout.nodes.get(track.source),
+        b = layout.nodes.get(track.target);
+      if (!a || !b || !pathMap.has(track.pathId)) return [];
+      const latest = traces.legs.get(track.legs[track.legs.length - 1])!;
+      const curve = laneCurve(a, b, track.lane, track.offset);
+      return [
+        {
+          ...track,
+          latest,
+          curve,
+          dot: onCurve(curve, 0.5),
+          colour: messageColour(track.messageId),
+        },
+      ];
+    }),
+  );
+  let messageTrackMap = $derived(
+    new Map(messageTracks.map((track) => [track.id, track])),
+  );
+  const trackId = (leg: MessageLeg) =>
+    [leg.pathId, leg.lane, leg.source, leg.messageId].join('/');
+  let pickedTrack = $derived(
+    selectedLeg ? messageTrackMap.get(trackId(selectedLeg)) : undefined,
+  );
+  function chooseLeg(leg: MessageLeg) {
+    pick = { epoch, id: leg.id };
+    onPath(leg.pathId);
+    onLeg?.(leg);
+  }
   let pinned = $derived(extractRoute(inspectedRoute));
   let pinnedLegs = $derived(
     (pinned?.legs ?? []).flatMap((leg, i) => {
@@ -185,6 +260,7 @@
             lane,
             known,
             active,
+            substrate,
             overlay: !!important,
             other,
           },
@@ -196,14 +272,22 @@
     lab.topology.paths.find((p) => p.id === selectedPath),
   );
   let transits = $derived(
-    edges.flatMap((e) =>
-      e.active.map(([id, t]) => ({
-        id,
-        t,
-        retry: traces.retries.has(t.token),
-        curve: e.tracks.get(t.source + '/' + t.lane)!.curve,
-      })),
-    ),
+    edges
+      .flatMap((e) =>
+        e.active.map(([id, t]) => {
+          const leg = traces.legs.get(id),
+            track = leg ? messageTrackMap.get(trackId(leg)) : undefined;
+          return {
+            id,
+            t,
+            leg,
+            colour: track?.colour,
+            retry: traces.retries.has(t.token),
+            curve: track?.curve ?? e.tracks.get(t.source + '/' + t.lane)!.curve,
+          };
+        }),
+      )
+      .sort((a, b) => Number(!!a.leg) - Number(!!b.leg)),
   );
   let endpoints = $derived(
     transitEndpoints(
@@ -246,10 +330,7 @@
   let drag: { x: number; y: number; left: number; top: number } | undefined;
   function down(e: PointerEvent) {
     if (e.button !== 0 && e.button !== 1) return;
-    if (
-      e.button === 0 &&
-      (e.target as Element).closest('[role=button],.device-log')
-    )
+    if (e.button === 0 && (e.target as Element).closest('[role=button]'))
       return;
     drag = {
       x: e.clientX,
@@ -266,12 +347,20 @@
     }
   }
   function zoomBy(f: number) {
+    autoFit = false;
     zoom = Math.max(0.2, Math.min(2, Math.round(zoom * f * 100) / 100));
   }
   function fit() {
-    zoom = Math.max(0.18, Math.min(1, (width - 3) / layout.width));
+    autoFit = true;
     viewport.scrollTo(0, 0);
   }
+  $effect(() => {
+    if (autoFit && width > 0)
+      zoom = Math.max(
+        0.35,
+        Math.min(expanded ? 1.5 : 1, (width - 3) / layout.width),
+      );
+  });
   function handleKey(e: KeyboardEvent, run: () => void) {
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-80, 0],
@@ -287,23 +376,18 @@
       run();
     }
   }
-  function stamp(ms: number) {
-    const s = Math.floor(ms / 1000);
-    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  }
-  function logLabel(log: DeviceLog) {
-    if (log.state === 'staged') return 'DRAFT';
-    if (log.state === 'replied') return 'REPLY';
-    if (log.state === 'sent') return 'SEND';
-    if (log.state === 'received') return 'RECV';
-    return log.state.toUpperCase();
-  }
   function caption(p: Path) {
     return p.transport_label + ' · ' + p.base_transit_delay_ms + ' ms';
   }
 </script>
 
-<section class="network-panel" aria-labelledby="topology-heading">
+<svelte:window onkeydown={screenKey} />
+<section
+  class="network-panel"
+  class:expanded
+  bind:this={panel}
+  aria-labelledby="topology-heading"
+>
   <div class="graph-head">
     <div>
       <h2 id="topology-heading">Network topology</h2>
@@ -327,7 +411,10 @@
           class="number"
           aria-label="Actual size"
           title="Actual size"
-          onclick={() => (zoom = 1)}>{Math.round(zoom * 100)}%</button
+          onclick={() => {
+            autoFit = false;
+            zoom = 1;
+          }}>{Math.round(zoom * 100)}%</button
         >
         <button aria-label="Zoom in" title="Zoom in" onclick={() => zoomBy(1.2)}
           >+</button
@@ -347,283 +434,357 @@
           ></button
         >
       </div>
+      <button
+        class="screen-button"
+        bind:this={screenButton}
+        aria-expanded={expanded}
+        onclick={toggleScreen}
+        >{expanded ? 'Close full screen' : 'Full screen'}</button
+      >
     </div>
   </div>
-  <div
-    class="graph-viewport"
-    bind:this={viewport}
-    bind:clientWidth={width}
-    onpointerdown={down}
-    onpointermove={move}
-    onpointerup={() => (drag = undefined)}
-    onpointercancel={() => (drag = undefined)}
-    role="region"
-    aria-label="Pan network diagram"
-  >
-    <svg
-      class="world"
-      role="group"
-      aria-label="Network topology"
-      width={layout.width * zoom}
-      height={layout.height * zoom}
-      viewBox={'0 0 ' + layout.width + ' ' + layout.height}
+  <div class="diagram-layout">
+    <ConversationColumn
+      role="sender"
+      devices={lab.devices}
+      messages={lab.messages}
+    />
+    <div
+      class="graph-viewport"
+      bind:this={viewport}
+      bind:clientWidth={width}
+      onpointerdown={down}
+      onpointermove={move}
+      onpointerup={() => (drag = undefined)}
+      onpointercancel={() => (drag = undefined)}
+      role="region"
+      aria-label="Pan network diagram"
     >
-      <defs
-        ><pattern
-          id="graph-grid"
-          width="14"
-          height="14"
-          patternUnits="userSpaceOnUse"
-          ><circle cx="7" cy="7" r=".65" fill="#768983" opacity=".3" /></pattern
-        ></defs
+      <svg
+        class="world"
+        role="group"
+        aria-label="Network topology"
+        width={layout.width * zoom}
+        height={layout.height * zoom}
+        viewBox={'0 0 ' + layout.width + ' ' + layout.height}
       >
-      <rect width={layout.width} height={layout.height} fill="#f8faf8" />
-      {#each layout.stages as band (band.index)}
-        <g class={'band ' + band.kind}
-          ><rect
-            x={band.x}
-            y="14"
-            width={band.width}
-            height={layout.height - 28}
-            rx="8"
-          />
-          <text x={band.x + band.width / 2} y="36">{band.name}</text></g
+        <defs
+          ><pattern
+            id="graph-grid"
+            width="14"
+            height="14"
+            patternUnits="userSpaceOnUse"
+            ><circle
+              cx="7"
+              cy="7"
+              r=".65"
+              fill="#768983"
+              opacity=".3"
+            /></pattern
+          ></defs
         >
-      {/each}
-      <rect
-        x="0"
-        y="49"
-        width={layout.width}
-        height={layout.height - 62}
-        fill="url(#graph-grid)"
-        pointer-events="none"
-      />
-      {#each edges as e (e.p.id)}
-        <g
-          role="button"
-          tabindex="0"
-          aria-label={e.p.source_id +
-            ' to ' +
-            e.p.target_id +
-            ', ' +
-            caption(e.p)}
-          aria-pressed={selectedPath === e.p.id}
-          data-path-id={e.p.id}
-          data-lane={e.lane}
-          data-path-state={e.state}
-          class={'edge ' + e.state}
-          onclick={() => onPath(e.p.id)}
-          onkeydown={(ev) => handleKey(ev, () => onPath(e.p.id))}
-        >
-          <title
-            >{e.p.source_id} ↔ {e.p.target_id} · {caption(e.p)} · {e.known
-              ? 'known contact'
-              : e.state}</title
-          >
-          {#each e.tracks as [key, track] (key)}
-            <path class="hit" d={track.curve.d} />
-            <path
-              class="stroke"
-              class:retry={track.retry}
-              d={track.curve.d}
-              data-track-source={track.source}
-              data-track-lane={track.lane}
+        <rect width={layout.width} height={layout.height} fill="#f8faf8" />
+        {#each layout.stages as band (band.index)}
+          <g class={'band ' + band.kind}
+            ><rect
+              x={band.x}
+              y="14"
+              width={band.width}
+              height={layout.height - 28}
+              rx="8"
             />
-          {/each}
-        </g>
-      {/each}
-      {#each pinnedLegs as leg (leg.order)}
-        <path
-          class="pinned-route"
-          class:retry={pinned?.retry}
-          d={leg.d}
-          data-inspected-path={leg.id}
-          data-route-source={leg.source}
-          data-route-target={leg.target}
+            <text x={band.x + band.width / 2} y="36">{band.name}</text></g
+          >
+        {/each}
+        <rect
+          x="0"
+          y="49"
+          width={layout.width}
+          height={layout.height - 62}
+          fill="url(#graph-grid)"
           pointer-events="none"
         />
-      {/each}
-      {#each lab.topology.nodes as n (n.id)}
-        {@const g = layout.nodes.get(n.id)!}
-        {@const device = devices.get(n.id)}
-        {@const activity = endpoints.get(n.id)}
-        {@const busy = Object.keys(n.delayed_packets ?? {}).length > 0}
-        <g
-          transform={'translate(' + g.x + ' ' + g.y + ')'}
-          role="button"
-          tabindex="0"
-          aria-pressed={selectedNode === n.id}
-          aria-label={n.label +
-            ', ' +
-            n.kind +
-            ', ' +
-            (n.online ? 'online' : 'offline')}
-          data-node-id={n.id}
-          data-route-member={pinnedNodes.has(n.id)}
-          data-transit-source={activity?.outgoing ?? 0}
-          data-transit-target={activity?.incoming ?? 0}
-          data-highlighted={selectedNode === n.id}
-          class="graph-node"
-          class:selected={selectedNode === n.id}
-          class:peer={contacts.has(n.id)}
-          class:down={!n.online}
-          class:busy
-          onclick={() => onNode(n.id)}
-          onkeydown={(ev) => handleKey(ev, () => onNode(n.id))}
-        >
-          <title
-            >{n.label} · {n.id} · {n.simulated_address} · {n.online
-              ? 'online'
-              : 'offline'}</title
+        {#each edges as e (e.p.id)}
+          <g
+            role="button"
+            tabindex="0"
+            aria-label={e.p.source_id +
+              ' to ' +
+              e.p.target_id +
+              ', ' +
+              caption(e.p)}
+            aria-pressed={selectedPath === e.p.id}
+            data-path-id={e.p.id}
+            data-lane={e.lane}
+            data-path-state={e.state}
+            class={'edge ' + e.state}
+            class:substrate={e.substrate}
+            onclick={() => onPath(e.p.id)}
+            onkeydown={(ev) => handleKey(ev, () => onPath(e.p.id))}
           >
-          {#if pinnedNodes.has(n.id)}
+            <title
+              >{e.p.source_id} ↔ {e.p.target_id} · {caption(e.p)} · {e.known
+                ? 'known contact'
+                : e.state}</title
+            >
+            {#each e.tracks as [key, track] (key)}
+              <path class="hit" d={track.curve.d} />
+              <path
+                class="stroke"
+                class:retry={track.retry}
+                d={track.curve.d}
+                data-track-source={track.source}
+                data-track-lane={track.lane}
+              />
+            {/each}
+          </g>
+        {/each}
+        {#each messageTracks as track (track.id)}
+          <g
+            class="message-track"
+            class:failed={track.latest.status === 'failed'}
+            class:chosen={pickedTrack?.id === track.id}
+            style:--message-colour={track.colour}
+            data-message-id={track.messageId}
+            data-message-path={track.pathId}
+            data-source={track.source}
+            data-target={track.target}
+            data-lane={track.lane}
+            role="button"
+            tabindex="0"
+            aria-label={track.messageId +
+              ' · ' +
+              track.source +
+              ' to ' +
+              track.target +
+              ' · ' +
+              track.legs.length +
+              ' transits'}
+            onclick={() => chooseLeg(track.latest)}
+            onkeydown={(e) => handleKey(e, () => chooseLeg(track.latest))}
+          >
+            <title
+              >{track.messageId} · {track.source} → {track.target} · {track
+                .latest.status}</title
+            >
+            <path class="message-hit" d={track.curve.d} />
+            <path class="message-line" d={track.curve.d} />
+            {#if track.latest.status !== 'active'}
+              <circle
+                class="history-dot"
+                data-history-leg={track.latest.id}
+                cx={track.dot.x}
+                cy={track.dot.y}
+                r="3.2"
+              />
+            {/if}
+          </g>
+        {/each}
+        {#each pinnedLegs as leg (leg.order)}
+          <path
+            class="pinned-route"
+            class:retry={pinned?.retry}
+            d={leg.d}
+            data-inspected-path={leg.id}
+            data-route-source={leg.source}
+            data-route-target={leg.target}
+            pointer-events="none"
+          />
+        {/each}
+        {#each lab.topology.nodes as n (n.id)}
+          {@const g = layout.nodes.get(n.id)!}
+          {@const device = devices.get(n.id)}
+          {@const activity = endpoints.get(n.id)}
+          {@const busy = Object.keys(n.delayed_packets ?? {}).length > 0}
+          <g
+            transform={'translate(' + g.x + ' ' + g.y + ')'}
+            role="button"
+            tabindex="0"
+            aria-pressed={selectedNode === n.id}
+            aria-label={n.label +
+              ', ' +
+              n.kind +
+              ', ' +
+              (n.online ? 'online' : 'offline')}
+            data-node-id={n.id}
+            data-route-member={pinnedNodes.has(n.id)}
+            data-transit-source={activity?.outgoing ?? 0}
+            data-transit-target={activity?.incoming ?? 0}
+            data-highlighted={selectedNode === n.id}
+            class="graph-node"
+            class:selected={selectedNode === n.id}
+            class:peer={contacts.has(n.id)}
+            class:down={!n.online}
+            class:busy
+            onclick={() => onNode(n.id)}
+            onkeydown={(ev) => handleKey(ev, () => onNode(n.id))}
+          >
+            <title
+              >{n.label} · {n.id} · {n.simulated_address} · {n.online
+                ? 'online'
+                : 'offline'}</title
+            >
+            {#if pinnedNodes.has(n.id)}
+              <rect
+                class="route-node"
+                class:retry={pinned?.retry}
+                x={-g.w / 2 - 3}
+                y={-g.h / 2 - 3}
+                width={g.w + 6}
+                height={g.h + 6}
+                rx="9"
+                pointer-events="none"
+              />
+            {/if}
             <rect
-              class="route-node"
-              class:retry={pinned?.retry}
-              x={-g.w / 2 - 3}
-              y={-g.h / 2 - 3}
-              width={g.w + 6}
-              height={g.h + 6}
-              rx="9"
-              pointer-events="none"
+              data-card=""
+              class="card"
+              x={-g.w / 2}
+              y={-g.h / 2}
+              width={g.w}
+              height={g.h}
+              rx={device ? 8 : 7}
             />
-          {/if}
-          <rect
-            data-card=""
-            class="card"
-            x={-g.w / 2}
-            y={-g.h / 2}
-            width={g.w}
-            height={g.h}
-            rx={device ? 8 : 7}
-          />
-          {#if device}
-            <g
-              transform={'translate(' +
-                (-g.w / 2 + 9) +
-                ' ' +
-                (-g.h / 2 + 10) +
-                ') scale(.72)'}><GraphGlyph kind={n.kind} /></g
-            >
-            <text class="device-title" x={-g.w / 2 + 32} y={-g.h / 2 + 22}
-              >{device.label}</text
-            >
-            <text class="device-sub" x={-g.w / 2 + 10} y={-g.h / 2 + 38}
-              >{device.role} · polling {device.polling_enabled
-                ? 'on'
-                : 'off'}</text
-            >
-            <text class="key" x={-g.w / 2 + 10} y={-g.h / 2 + 52}
-              >{device.fingerprint.slice(0, 16)}…</text
-            >
-            <line
-              x1={-g.w / 2}
-              x2={g.w / 2}
-              y1={-g.h / 2 + 60}
-              y2={-g.h / 2 + 60}
-              stroke="#e1e7e3"
-            />
-            <foreignObject
-              x={-g.w / 2 + 8}
-              y={-g.h / 2 + 65}
-              width={g.w - 16}
-              height={g.h - 71}
-            >
-              <div class="device-log" aria-label={device.label + ' device log'}>
-                {#each device.logs as log (log.message_id + '/' + log.state + '/' + log.simulation_time_ms)}<div
-                    class="logrow"
-                  >
-                    <b>{logLabel(log)}</b><time
-                      title={log.simulation_time_ms + ' ms'}
-                      >{stamp(log.simulation_time_ms)}</time
-                    ><span>{log.text || log.state}</span>
-                  </div>
-                {:else}<span class="empty">No messages</span>{/each}
-              </div>
-            </foreignObject>
-          {:else}
-            <g transform="translate(-9,-17) scale(.76)"
-              ><GraphGlyph kind={n.kind} /></g
-            >
-            <text class="node-label" text-anchor="middle" y="14"
-              >{n.kind === 'tor'
-                ? 'Tor'
-                : n.kind === 'provider'
-                  ? n.label.replace(' provider', '')
-                  : n.label}</text
-            >
-          {/if}
-          {#if activity}
-            <g
-              class="endpoints"
-              transform={'translate(0 ' + (g.h / 2 + 1) + ')'}
-              pointer-events="none"
-            >
-              <title
-                >{activity.outgoing} outgoing ({activity.outgoingRetries} retries),
-                {activity.incoming} incoming ({activity.incomingRetries} retries)</title
+            {#if device}
+              <g
+                transform={'translate(' +
+                  (-g.w / 2 + 9) +
+                  ' ' +
+                  (-g.h / 2 + 10) +
+                  ') scale(.72)'}><GraphGlyph kind={n.kind} /></g
               >
-              {#if activity.outgoing}
-                <g
-                  class="outgoing"
-                  class:retry={activity.outgoingRetries > 0}
-                  transform="translate(-26,0)"
+              <text class="device-title" x={-g.w / 2 + 32} y={-g.h / 2 + 22}
+                >{device.label}</text
+              >
+              {@const activityTimes = lastActivity(device.logs)}
+              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 43}
+                >Last sent</text
+              >
+              <text
+                class="device-time"
+                x={g.w / 2 - 9}
+                y={-g.h / 2 + 43}
+                data-last-sent={activityTimes.sent ?? ''}
+                >{activityTimes.sent === null
+                  ? '—'
+                  : logicalStamp(activityTimes.sent)}</text
+              >
+              <text class="device-sub" x={-g.w / 2 + 9} y={-g.h / 2 + 63}
+                >Last received</text
+              >
+              <text
+                class="device-time"
+                x={g.w / 2 - 9}
+                y={-g.h / 2 + 63}
+                data-last-received={activityTimes.received ?? ''}
+                >{activityTimes.received === null
+                  ? '—'
+                  : logicalStamp(activityTimes.received)}</text
+              >
+            {:else}
+              <g transform="translate(-9,-17) scale(.76)"
+                ><GraphGlyph kind={n.kind} /></g
+              >
+              <text class="node-label" text-anchor="middle" y="14"
+                >{n.kind === 'tor'
+                  ? 'Tor'
+                  : n.kind === 'provider'
+                    ? n.label.replace(' provider', '')
+                    : n.label}</text
+              >
+            {/if}
+            {#if activity}
+              <g
+                class="endpoints"
+                transform={'translate(0 ' + (g.h / 2 + 1) + ')'}
+                pointer-events="none"
+              >
+                <title
+                  >{activity.outgoing} outgoing ({activity.outgoingRetries} retries),
+                  {activity.incoming} incoming ({activity.incomingRetries} retries)</title
                 >
-                  <rect width="25" height="12" rx="3" /><text x="12" y="9"
-                    >↑{activity.outgoing}</text
+                {#if activity.outgoing}
+                  <g
+                    class="outgoing"
+                    class:retry={activity.outgoingRetries > 0}
+                    transform="translate(-26,0)"
                   >
-                </g>
-              {/if}
-              {#if activity.incoming}
-                <g
-                  class="incoming"
-                  class:retry={activity.incomingRetries > 0}
-                  transform="translate(1,0)"
-                >
-                  <rect width="25" height="12" rx="3" /><text x="12" y="9"
-                    >↓{activity.incoming}</text
+                    <rect width="25" height="12" rx="3" /><text x="12" y="9"
+                      >↑{activity.outgoing}</text
+                    >
+                  </g>
+                {/if}
+                {#if activity.incoming}
+                  <g
+                    class="incoming"
+                    class:retry={activity.incomingRetries > 0}
+                    transform="translate(1,0)"
                   >
-                </g>
-              {/if}
-            </g>
-          {/if}
-          <circle
-            class="health"
-            cx={g.w / 2 - 6}
-            cy={-g.h / 2 + 6}
-            r="3"
-            fill={!n.online ? '#bd453b' : busy ? '#bd7919' : '#3b855a'}
-          />
-        </g>
-      {/each}
-      {#each transits as m (m.id)}
-        {@const pos = onCurve(
-          m.curve,
-          transitFraction(visualTime, m.t.start_ms, m.t.end_ms),
-        )}
-        <g
-          class="marker"
-          data-transit-id={m.id}
-          data-retry={m.retry}
-          data-source={m.t.source}
-          data-target={m.t.target}
-          data-lane={m.t.lane}
-          transform={'translate(' + pos.x + ' ' + pos.y + ')'}
-          pointer-events="none"
-        >
-          <title
-            >{m.t.token} · {m.t.source} → {m.t.target} · {m.t.start_ms}–{m.t
-              .end_ms} ms</title
+                    <rect width="25" height="12" rx="3" /><text x="12" y="9"
+                      >↓{activity.incoming}</text
+                    >
+                  </g>
+                {/if}
+              </g>
+            {/if}
+            <circle
+              class="health"
+              cx={g.w / 2 - 6}
+              cy={-g.h / 2 + 6}
+              r="3"
+              fill={!n.online ? '#bd453b' : busy ? '#bd7919' : '#3b855a'}
+            />
+          </g>
+        {/each}
+        {#each transits as m (m.id)}
+          {@const pos = onCurve(
+            m.curve,
+            transitFraction(visualTime, m.t.start_ms, m.t.end_ms),
+          )}
+          <g
+            class="marker"
+            class:background={!m.leg}
+            data-message-id={m.leg?.messageId}
+            data-transit-id={m.id}
+            data-retry={m.retry}
+            data-source={m.t.source}
+            data-target={m.t.target}
+            data-lane={m.t.lane}
+            transform={'translate(' + pos.x + ' ' + pos.y + ')'}
+            pointer-events="none"
           >
-          <circle
-            r="6.7"
-            fill={m.retry ? '#fff0dd' : '#d6f4df'}
-            stroke={m.retry ? '#a94d0a' : '#3a8054'}
-            stroke-width="1.1"
-          /><circle r="2.6" fill={m.retry ? '#ae500a' : '#267246'} />
-        </g>
-      {/each}
-    </svg>
+            <title
+              >{m.t.token} · {m.t.source} → {m.t.target} · {m.t.start_ms}–{m.t
+                .end_ms} ms</title
+            >
+            <circle
+              r={m.leg ? 7 : 3.5}
+              fill={m.leg ? 'white' : m.retry ? '#fff0dd' : '#d6f4df'}
+              stroke={m.retry ? '#c0580a' : (m.colour ?? '#77867c')}
+              stroke-width={m.leg ? 2 : 1}
+            /><circle r={m.leg ? 4.2 : 1.6} fill={m.colour ?? '#6b7f72'} />
+            {#if m.leg}
+              <circle
+                r="8"
+                fill="transparent"
+                class="marker-hit"
+                pointer-events="all"
+                role="button"
+                tabindex="0"
+                aria-label={'Inspect ' + m.leg.messageId + ' ' + m.id}
+                onclick={() => chooseLeg(m.leg!)}
+                onkeydown={(ev) => handleKey(ev, () => chooseLeg(m.leg!))}
+              />
+            {/if}
+          </g>
+        {/each}
+      </svg>
+    </div>
+    <ConversationColumn
+      role="receiver"
+      devices={lab.devices}
+      messages={lab.messages}
+    />
   </div>
   <div class="legend">
     <span><i class="legend-line"></i>Configured</span><span
@@ -637,6 +798,72 @@
     <span>↑ Outgoing · ↓ Incoming</span>
     <span class="lane">↗ Forward <span>·</span> ↙ Reply</span>
   </div>
+  {#if selectedLeg && pickedTrack}
+    <section
+      class="leg-readout"
+      aria-label="Recorded message transit"
+      data-selected-leg={selectedLeg.id}
+      style:--message-colour={pickedTrack.colour}
+    >
+      <div class="leg-title">
+        <strong>{selectedLeg.messageId}</strong><span
+          >{selectedLeg.source} → {selectedLeg.target}</span
+        >
+        <button aria-label="Close transit details" onclick={() => (pick = null)}
+          >×</button
+        >
+      </div>
+      {#if pickedTrack.legs.length > 1}
+        <label
+          >Traversal <select
+            value={selectedLeg.id}
+            onchange={(e) => chooseLeg(traces.legs.get(e.currentTarget.value)!)}
+          >
+            {#each pickedTrack.legs as id (id)}
+              {@const row = traces.legs.get(id)!}
+              <option value={id}
+                >{id} · {row.startMs ?? row.endMs} ms · {row.status}</option
+              >
+            {/each}
+          </select></label
+        >
+      {/if}
+      <dl>
+        <dt>Transit</dt>
+        <dd>{selectedLeg.id} · {selectedLeg.status}</dd>
+        <dt>Path</dt>
+        <dd>
+          {selectedLeg.pathId} · {pathMap.get(selectedLeg.pathId)
+            ?.transport_label}
+        </dd>
+        <dt>Direction</dt>
+        <dd>{selectedLeg.lane}</dd>
+        <dt>Token</dt>
+        <dd>{selectedLeg.token}</dd>
+        {#if selectedLeg.startMs !== null}<dt>Departure</dt>
+          <dd>{selectedLeg.startMs} ms</dd>{/if}
+        {#if selectedLeg.expectedEndMs !== null}<dt>Expected arrival</dt>
+          <dd>{selectedLeg.expectedEndMs} ms</dd>{/if}
+        {#if selectedLeg.endMs !== null}<dt>
+            {selectedLeg.status === 'failed' ? 'Failure' : 'Arrival'}
+          </dt>
+          <dd>{selectedLeg.endMs} ms</dd>{/if}
+        {#if selectedLeg.startMs !== null && selectedLeg.endMs !== null}<dt>
+            Elapsed
+          </dt>
+          <dd>{selectedLeg.endMs - selectedLeg.startMs} ms</dd>{/if}
+        {#if selectedLeg.reason}<dt>Reason</dt>
+          <dd>{selectedLeg.reason}</dd>{/if}
+        {#each Object.entries(selectedLeg.cargo) as [field, value] (field)}
+          <dt>{field.replaceAll('_', ' ')}</dt>
+          <dd>
+            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+          </dd>
+        {:else}<dt>Cargo</dt>
+          <dd>No recorded description</dd>{/each}
+      </dl>
+    </section>
+  {/if}
   {#if highlight}<p class="selected-transport">
       {highlight.source_id} ↔ {highlight.target_id} <span>·</span>
       {caption(highlight)} <span>·</span>
@@ -651,6 +878,80 @@
     background: white;
     overflow: hidden;
     min-width: 0;
+  }
+  .diagram-layout {
+    display: grid;
+    grid-template-columns: clamp(154px, 13vw, 262px) minmax(0, 1fr) clamp(
+        154px,
+        13vw,
+        262px
+      );
+    height: clamp(350px, 57vh, 620px);
+    min-height: 0;
+  }
+  .diagram-layout > :global(aside:first-child) {
+    border-right: 1px solid var(--border);
+  }
+  .diagram-layout > :global(aside:last-child) {
+    border-left: 1px solid var(--border);
+  }
+  .screen-button {
+    font-size: 0.74rem;
+    min-height: 30px;
+    padding: 4px 9px;
+  }
+  .network-panel.expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    width: 100%;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  .expanded .diagram-layout > :global(aside) {
+    display: none;
+  }
+  .expanded .diagram-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  .expanded .graph-head,
+  .expanded .legend {
+    flex-shrink: 0;
+  }
+  .expanded .graph-viewport {
+    max-height: none;
+  }
+  :global(body:has(.network-panel.expanded)) {
+    overflow: hidden;
+  }
+  @media (max-width: 850px) {
+    .diagram-layout {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: minmax(260px, 1fr) minmax(175px, 0.7fr);
+      height: min(82vh, 760px);
+    }
+    .diagram-layout .graph-viewport {
+      grid-row: 1;
+      grid-column: 1/-1;
+    }
+    .diagram-layout > :global(aside) {
+      grid-row: 2;
+      border-top: 1px solid var(--border);
+    }
+    .diagram-layout > :global(aside:last-child) {
+      border-left: 0;
+    }
+    .expanded .diagram-layout {
+      min-height: 360px;
+    }
   }
   .graph-head,
   .tools,
@@ -728,7 +1029,7 @@
   .graph-viewport {
     position: relative;
     overflow: auto;
-    max-height: min(65vh, 620px);
+    max-height: none;
     min-height: 220px;
     overscroll-behavior: contain;
     scrollbar-color: #b9c8bf #edf1ed;
@@ -865,6 +1166,97 @@
   .endpoints .retry rect {
     fill: #a44b0d;
   }
+  .edge.substrate.completed .stroke,
+  .edge.substrate.configured .stroke {
+    stroke: #a3afa7;
+    opacity: 0.3;
+  }
+  .edge.substrate.active .stroke {
+    stroke: #728d7f;
+    stroke-width: 1.3;
+    opacity: 0.65;
+  }
+  .marker-hit {
+    cursor: pointer;
+  }
+  .marker.background {
+    opacity: 0.65;
+  }
+  .message-track {
+    cursor: pointer;
+    outline: none;
+  }
+  .message-track path {
+    fill: none;
+  }
+  .message-hit {
+    stroke: transparent;
+    stroke-width: 8;
+    pointer-events: stroke;
+  }
+  .message-line {
+    stroke: var(--message-colour);
+    stroke-width: 2.4;
+    pointer-events: none;
+  }
+  .message-track.failed .message-line {
+    stroke-dasharray: 4 3;
+  }
+  .message-track:hover .message-line,
+  .message-track:focus-visible .message-line,
+  .message-track.chosen .message-line {
+    stroke-width: 4;
+  }
+  .history-dot {
+    fill: var(--message-colour);
+    stroke: white;
+    stroke-width: 1.2;
+  }
+  .leg-readout {
+    margin: 8px 16px 14px;
+    border-left: 3px solid var(--message-colour);
+    padding: 6px 10px;
+    max-height: 220px;
+    overflow: auto;
+    background: #f6f8f6;
+  }
+  .leg-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .leg-title strong {
+    color: var(--message-colour);
+  }
+  .leg-title button {
+    margin-left: auto;
+    background: white;
+    border: 1px solid #d3dbd5;
+    border-radius: 3px;
+  }
+  .leg-readout dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 2px 9px;
+    font-size: 11px;
+    margin: 6px 0 0;
+  }
+  .leg-readout dt {
+    color: #51645a;
+  }
+  .leg-readout dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--mono, monospace);
+  }
+  .leg-readout label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    margin: 4px 0;
+  }
   .graph-node {
     cursor: pointer;
     color: #52665a;
@@ -913,42 +1305,11 @@
       sans-serif;
     fill: #56695c;
   }
-  .key {
+  .device-time {
     font: 9px var(--mono, monospace);
-    fill: #6b796f;
-  }
-  .device-log {
-    color: #3e5345;
-    overflow: auto;
-    height: 100%;
-    font:
-      10px system-ui,
-      sans-serif;
-    line-height: 1.25;
-    cursor: auto;
-    scrollbar-width: thin;
-    overflow-wrap: anywhere;
-  }
-  .logrow {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 1px 3px;
-    padding: 1px 0 5px;
-  }
-  .logrow b,
-  .logrow time {
-    font: 8px var(--mono, monospace);
-    color: #5d7162;
-  }
-  .logrow b {
-    font-weight: 700;
-    color: #366c4b;
-  }
-  .logrow span {
-    grid-column: 1/-1;
-  }
-  .empty {
-    color: #77847b;
+    fill: #344b40;
+    text-anchor: end;
+    font-variant-numeric: tabular-nums;
   }
   .legend {
     gap: 15px;

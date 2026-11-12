@@ -127,3 +127,12 @@ test('cross-field limits, probabilities and exact seed limits agree with the bac
     }),
   ).toMatch(/node ID/);
 });
+
+test('accepts zero wall-clock pacing while keeping the configured logical delays', () => {
+  const cfg = { ...valid(), step_delay_ms: 0, base_transit_delay_ms: 400 };
+  expect(configurationError(cfg)).toBe('');
+  expect(prepareConfig(cfg).base_transit_delay_ms).toBe(400);
+  expect(configurationError({ ...cfg, step_delay_ms: -1 })).toMatch(
+    /Playback delay/,
+  );
+});

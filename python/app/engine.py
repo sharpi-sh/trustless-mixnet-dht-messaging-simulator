@@ -281,8 +281,8 @@ class Engine(Simulation):
                     person_id=person.id,
                 )
         elif action.command == "delay":
-            if not 1 <= action.delay_ms <= 2000:
-                raise ValueError("Playback delay must be 1–2000 ms")
+            if not 0 <= action.delay_ms <= 2000:
+                raise ValueError("Playback delay must be 0–2000 ms")
             self.step_delay_ms = action.delay_ms
             self.emit("playback_delay_updated", action, step_delay_ms=self.step_delay_ms)
         else:

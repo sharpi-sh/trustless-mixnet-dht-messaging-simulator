@@ -18,6 +18,7 @@ CommandType = Literal[
     "pause",
     "resume",
     "step",
+    "step_to_first_message_hop",
     "stop",
     "reset",
     "set_playback_delay",
@@ -57,7 +58,7 @@ class Command(Model):
     target: str = ""
     enabled: StrictBool | None = None
     drop_in_flight: StrictBool = False
-    delay_ms: int | None = Field(None, ge=1, le=2000, strict=True)
+    delay_ms: int | None = Field(None, ge=0, le=2000, strict=True)
     messages: dict[Identifier, str] | None = None
     after_sequence: int = Field(0, ge=0, strict=True)
     epoch: int | None = Field(None, ge=0, strict=True)
@@ -169,6 +170,7 @@ class NodeDetails(Model):
 
 
 class ClockDTO(Model):
+    first_message_hop_sequence: int | None = Field(None, ge=1)
     simulation_id: str
     epoch: int = Field(0, ge=0)
     sequence: int = Field(ge=0)

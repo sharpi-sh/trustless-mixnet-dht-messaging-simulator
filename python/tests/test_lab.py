@@ -120,3 +120,24 @@ def test_key_lineage_matches_ciphertext_containers_and_recipient_fingerprints():
         )
         assert rows["reply_key_learned"]["artefact"] == lab.clients.people[msg.sender_id].fingerprint
         assert rows["public_key_retrieved"]["artefact"] == lab.clients.people[msg.target_id].fingerprint
+
+
+def test_message_departures_capture_the_wire_at_each_hop():
+    lab = Laboratory(config())
+    lab.lifecycle("run")
+    for _ in lab.drain(20000):
+        if lab.status != "running":
+            break
+    hops = [e for e in lab.events if e.event_type == "path_transit_started" and e.message_id == "msg-1"]
+    sphinx = [
+        (e.source_id, e.target_id, e.payload["cargo"])
+        for e in hops
+        if e.payload["cargo"]["kind"] == "Sphinx packet"
+    ]
+    assert sphinx[0][:2] == ("sender-1", "tor-sender-1")
+    assert sphinx[0][2]["sha256"] == sphinx[1][2]["sha256"]
+    assert sphinx[1][2]["sha256"] != sphinx[2][2]["sha256"]
+    assert len(sphinx[0][2]["first_16_bytes_hex"]) == 32
+    assert {"Encrypted fragment", "Kademlia RPC", "Fragment request"} <= {
+        e.payload["cargo"]["kind"] for e in hops
+    }

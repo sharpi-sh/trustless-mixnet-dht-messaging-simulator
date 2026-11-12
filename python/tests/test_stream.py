@@ -12,6 +12,7 @@ def apply(state, patch):
     for key in (
         "sequence",
         "simulation_time_ms",
+        "first_message_hop_sequence",
         "status",
         "step_delay_ms",
         "next_step_ms",

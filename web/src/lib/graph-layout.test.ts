@@ -3,6 +3,7 @@ import {
   contactIds,
   extractRoute,
   makeTraceHistory,
+  messageColour,
   transitEndpoints,
   laneCurve,
   layoutTopology,
@@ -186,4 +187,96 @@ test('counts actual sources, destinations and retries independently at shared no
     incomingRetries: 1,
   });
   expect(rows.has('D')).toBe(false);
+});
+
+test('retains message-associated device, reply and repeat transits with their authoritative cargo and timing', () => {
+  const log: LabEvent[] = [];
+  function record(
+    kind: string,
+    id: string,
+    messageId: string | null,
+    lane: 'reply' | 'forward',
+    time: number,
+    extra: LabEvent['payload'] = {},
+  ) {
+    const n = log.length + 1;
+    log.push({
+      event_id: 'evt-' + n,
+      step_id: null,
+      sequence: n,
+      simulation_id: 'lab',
+      event_type: 'path_transit_' + kind,
+      simulation_time_ms: time,
+      message_id: messageId,
+      conversation_id: null,
+      source_id: lane === 'reply' ? 'tor-alice' : 'alice',
+      target_id: lane === 'reply' ? 'alice' : 'tor-alice',
+      payload: {
+        transit_id: id,
+        path_id: 'alice~tor-alice',
+        lane,
+        token: 'cell-' + id,
+        ...extra,
+      },
+    });
+  }
+  const history = makeTraceHistory();
+  record('started', 'one', 'msg-1', 'forward', 3, {
+    cargo: { bytes: 64, digest: '01' },
+    end_ms: 14,
+  });
+  const started = history('lab:0', log).legs.get('one')!;
+  expect(started).toMatchObject({
+    source: 'alice',
+    target: 'tor-alice',
+    status: 'active',
+    startMs: 3,
+    endMs: null,
+  });
+  record('completed', 'one', 'msg-1', 'forward', 14);
+  record('started', 'second', 'msg-2', 'reply', 15);
+  record('completed', 'second', 'msg-2', 'reply', 22);
+  record('failed', 'three', 'msg-1', 'forward', 28, { reason: 'blocked' });
+  record('started', 'maintenance', null, 'forward', 29);
+  record('started', 'four', 'msg-3', 'forward', 30);
+  const data = history('lab:0', log);
+  expect(data.legs.get('one')).toMatchObject({
+    status: 'completed',
+    startMs: 3,
+    endMs: 14,
+    expectedEndMs: 14,
+    cargo: { bytes: 64, digest: '01' },
+  });
+  expect(data.legs.get('three')).toMatchObject({
+    status: 'failed',
+    startMs: null,
+    endMs: 28,
+    reason: 'blocked',
+    cargo: {},
+  });
+  expect(data.legs.get('second')).toMatchObject({
+    source: 'tor-alice',
+    target: 'alice',
+    lane: 'reply',
+  });
+  expect(data.legs.has('maintenance')).toBe(false);
+  const [first, reply, other] = data.messageTracks.values();
+  expect(first.legs).toEqual(['one', 'three']);
+  expect(reply.lane).toBe('reply');
+  expect(other.offset).not.toBe(first.offset);
+  const { nodes } = layoutTopology(
+    [node('alice', 'person', 0), node('tor-alice', 'tor', 1)],
+    [],
+  );
+  const curve = (offset: number) =>
+    laneCurve(nodes.get('alice')!, nodes.get('tor-alice')!, 'forward', offset);
+  expect(onCurve(curve(first.offset), 0.5)).not.toEqual(
+    onCurve(curve(other.offset), 0.5),
+  );
+  expect(
+    new Set(
+      Array.from({ length: 64 }, (_, i) => messageColour('msg-' + (i + 1))),
+    ).size,
+  ).toBe(64);
+  expect(history('lab:1', []).legs.size).toBe(0);
 });

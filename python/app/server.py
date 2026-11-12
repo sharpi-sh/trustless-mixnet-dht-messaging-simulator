@@ -116,6 +116,7 @@ async def info() -> Info:
             "pause",
             "resume",
             "step",
+            "step_to_first_message_hop",
             "stop",
             "reset",
             "polling",
@@ -213,7 +214,15 @@ async def control(sid: str, command: Command) -> CommandResult:
 
 @app.post("/api/simulations/{sid}/{operation}")
 async def lifecycle(sid: str, operation: str) -> CommandResult:
-    if operation not in {"run", "resume", "pause", "step", "stop", "reset"}:
+    if operation not in {
+        "run",
+        "resume",
+        "pause",
+        "step",
+        "step_to_first_message_hop",
+        "stop",
+        "reset",
+    }:
         raise HTTPException(404, "Unknown lifecycle command")
     return await apply_command(
         sid,

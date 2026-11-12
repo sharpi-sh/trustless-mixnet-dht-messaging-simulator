@@ -84,6 +84,49 @@ for (const count of [10, 20]) {
       const nodes = graph.locator('[data-node-id]');
       await expect(nodes).toHaveCount(topology.length);
       await assertGeometry(nodes, topology);
+      const sender = page.getByRole('complementary', {
+        name: 'Sender conversations',
+        exact: true,
+      });
+      const recipient = page.getByRole('complementary', {
+        name: 'Recipient conversations',
+        exact: true,
+      });
+      await expect(sender).toBeVisible();
+      await expect(recipient).toBeVisible();
+      const graphViewport = page.getByRole('region', {
+        name: 'Pan network diagram',
+      });
+      const [left, diagram, right] = await Promise.all([
+        sender.boundingBox(),
+        graphViewport.boundingBox(),
+        recipient.boundingBox(),
+      ]);
+      expect(left!.x + left!.width).toBeLessThanOrEqual(diagram!.x + 1);
+      expect(diagram!.x + diagram!.width).toBeLessThanOrEqual(right!.x + 1);
+      const full = page.getByRole('button', {
+        name: 'Full screen',
+        exact: true,
+      });
+      const close = page.getByRole('button', {
+        name: 'Close full screen',
+        exact: true,
+      });
+      await full.click();
+      await expect(close).toBeVisible();
+      await expect(sender).toBeHidden();
+      await expect(recipient).toBeHidden();
+      const maximised = await page
+        .getByRole('region', { name: 'Network topology', exact: true })
+        .boundingBox();
+      expect(maximised!.width).toBeGreaterThanOrEqual(1499);
+      expect(maximised!.height).toBeGreaterThanOrEqual(999);
+      await close.click();
+      await expect(full).toBeVisible();
+      await full.click();
+      await page.keyboard.press('Escape');
+      await expect(full).toBeFocused();
+      await expect(sender).toBeVisible();
       for (const device of snapshot.devices) {
         await expect(
           graph.locator('[data-node-id="' + device.id + '"]'),
