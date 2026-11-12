@@ -1,0 +1,44 @@
+"""Regenerate the compatibility fixtures with the original Python 2 reference.
+
+Run with Python 2.7, sphinxmix==0.0.6, petlib==0.0.45, msgpack-python==0.6.2
+(or the msgpack==0.6.2 distribution) and OpenSSL 1.1.1w. This standalone oracle
+is not imported by the simulator or the Python 3 test suite.
+"""
+import base64
+import hashlib
+import json
+import os
+from petlib.bn import Bn
+from petlib.pack import decode, encode
+from sphinxmix import SphinxClient
+from sphinxmix.SphinxNode import sphinx_process
+from sphinxmix.SphinxParams import SphinxParams
+
+
+def generate(filename, deterministic):
+    params = SphinxParams(header_len=1024)
+    if deterministic:
+        params.group.gensecret = lambda: Bn(587)
+        SphinxClient.urandom = lambda size: b"\x5a" * size
+    names = ["in", "m1", "m2", "m3", "out"]
+    scalars = [Bn(s) for s in (137, 253, 397, 439, 577)]
+    keys = [params.group.expon(params.group.g, s) for s in scalars]
+    commands = [SphinxClient.Nenc((("127.0.0.1", 7000+i), False, None, i/8.0, name))
+                for i, name in enumerate(names)]
+    destination = ("127.0.0.1", 7004, "out")
+    wire = encode(SphinxClient.create_forward_message(params, commands, keys, destination, b"interoperability"))
+    fixture = dict(packet=base64.b64encode(wire), tags=[], states=[])
+    for secret in scalars:
+        header, body = decode(wire)
+        tag, _, inner = sphinx_process(params, secret, header, body)
+        wire = encode(inner)
+        fixture["tags"].append(base64.b64encode(tag))
+        fixture["states"].append(hashlib.sha256(wire).hexdigest())
+    assert SphinxClient.receive_forward(params, inner[1]) == [list(destination), b"interoperability"]
+    with open(os.path.join(os.path.dirname(__file__), filename), "w") as output:
+        json.dump(fixture, output, sort_keys=True)
+        output.write("\n")
+
+
+generate("test_sphinx_reference.json", False)
+generate("test_sphinx_build_reference.json", True)
