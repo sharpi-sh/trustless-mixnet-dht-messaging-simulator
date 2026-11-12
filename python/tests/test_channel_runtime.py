@@ -29,7 +29,7 @@ def config(sender, recipient, **changes):
     )
 
 
-@pytest.mark.parametrize("sender,recipient", product(("tor", "shadowsocks", "direct"), repeat=2))
+@pytest.mark.parametrize("sender,recipient", list(product(("tor", "shadowsocks", "direct"), repeat=2)))
 def test_channels_carry_signed_messages_polls_lookups_and_vault_responses(sender, recipient):
     lab = Laboratory(config(sender, recipient))
     lab.lifecycle("run")
