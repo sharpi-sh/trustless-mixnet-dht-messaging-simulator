@@ -370,6 +370,14 @@ test('completes the live thirty-transmission scenario with edited text, polling,
     if (device.id === 'sender-2') await avatar.press('Enter');
     else await avatar.click();
     await expect(avatar).toHaveAttribute('aria-pressed', 'true');
+    const stroke = await avatar
+      .locator('circle[data-card]')
+      .evaluate((c) => getComputedStyle(c).stroke);
+    const [red, green, blue] = (stroke.match(/\d+/g) ?? []).map(Number);
+    expect(green, 'Selected avatar ring ' + stroke).toBeGreaterThan(
+      Math.max(red, blue),
+    );
+
     for (const other of final.devices.filter(
       (d) => d.role === role && d.id !== device.id,
     ))
