@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2011 Ian Goldberg
 # Copyright 2016 George Danezis (UCL InfoSec Group)
 #
@@ -20,11 +18,12 @@
 
 
 # Adapted for the simulator in 2026: forward packets only, current crypto backend.
-from Crypto.Cipher import AES
-from hashlib import sha256
-from .wire import SphinxException
 import hmac
-from .wire import Group
+from hashlib import sha256
+
+from Crypto.Cipher import AES
+
+from .wire import Group, SphinxException
 
 
 class SphinxParams:

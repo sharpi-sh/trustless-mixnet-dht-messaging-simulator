@@ -7,7 +7,8 @@ The upstream files and README specify LGPL version 3. The licence and
 associated GPL text accompany this source. [Pinned source](https://github.com/UCL-InfoSec/sphinx/tree/25cdf24bf0233b3fb1502a80d3f64f91c71ebe3e)
 
 This project maintains the Python 3 port. It replaces petlib's OpenSSL
-bindings with PyCryptodome and current MessagePack, uses constant-time header
+bindings with PyCryptodome, cryptography (SEC1 point decoding) and current
+MessagePack, uses constant-time header
 MAC comparison, preserves the binary route flags used by the Python 2
 prototype and omits SURBs. The algorithm uses NIST P-224, AES-128-CTR, the
 UCL LIONESS construction, HMAC-SHA-256 truncated to 16 bytes and a per-hop

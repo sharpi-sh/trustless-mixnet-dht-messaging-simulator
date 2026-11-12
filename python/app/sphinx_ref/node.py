@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2011 Ian Goldberg
 # Copyright 2016 George Danezis (UCL InfoSec Group)
 #
@@ -18,9 +16,6 @@
 # License along with Sphinx.  If not, see
 # <http://www.gnu.org/licenses/>.
 
-from os import urandom
-from struct import unpack
-from binascii import hexlify
 
 from hmac import compare_digest
 

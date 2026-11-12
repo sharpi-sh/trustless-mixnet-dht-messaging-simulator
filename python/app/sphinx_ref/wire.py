@@ -1,8 +1,9 @@
 """P-224 operations and petlib-compatible MessagePack encoding."""
 
+import msgpack
 from Crypto.PublicKey import ECC
 from Crypto.PublicKey.ECC import EccPoint
-import msgpack
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 class SphinxException(ValueError):
@@ -60,6 +61,10 @@ def decode(data):
         nid, compressed = msgpack.unpackb(value, raw=True)
         if nid != 713 or not isinstance(compressed, bytes) or len(compressed) != 29:
             raise ValueError("invalid point")
-        return ECC.import_key(compressed, curve_name="P-224").pointQ
+        # OpenSSL validates and decompresses this original SEC1 encoding in native code.
+        numbers = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP224R1(), compressed
+        ).public_numbers()
+        return EccPoint(numbers.x, numbers.y, curve="P-224")
 
     return msgpack.unpackb(data, raw=False, ext_hook=extension)

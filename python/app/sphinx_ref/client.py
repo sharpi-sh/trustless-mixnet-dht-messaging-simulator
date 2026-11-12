@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2011 Ian Goldberg
 # Copyright 2016 George Danezis (UCL InfoSec Group)
 #
@@ -20,15 +18,11 @@
 
 
 # Adapted for the simulator in 2026: forward packets only, current crypto backend.
-from os import urandom
 from collections import namedtuple
+from os import urandom
 from struct import pack
 
-from .wire import encode, decode
-
-
-from .wire import SphinxException
-
+from .wire import SphinxException, decode, encode
 
 # FLAGS
 
@@ -59,8 +53,8 @@ def unpad_body(body):
     """Unpad a Sphinx message body."""
     body = bytes(body)
     l = len(body) - 1
-    x_marker = bytes(b"\x7f")[0]
-    f_marker = bytes(b"\xff")[0]
+    x_marker = b"\x7f"[0]
+    f_marker = b"\xff"[0]
     while body[l] == f_marker and l > 0:
         l -= 1
 
