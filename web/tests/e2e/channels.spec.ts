@@ -26,11 +26,9 @@ async function assertAddresses(
   }
   await expect(region).toContainText(hop.description);
   if (proxyEgress) {
-    const field = region
-      .locator('dl > div')
-      .filter({
-        has: region.page().getByText('Proxy egress IP', { exact: true }),
-      });
+    const field = region.locator('dl > div').filter({
+      has: region.page().getByText('Proxy egress IP', { exact: true }),
+    });
     await expect(field.locator('dd')).toHaveText(proxyEgress);
   }
   await expect(
@@ -90,7 +88,7 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
       /Run follows the message from its first hop to Outline Shadowsocks/,
     ),
   ).toBeVisible();
-  await expect(page.locator('footer')).toContainText(
+  await expect(page.locator('main > footer')).toContainText(
     'Outline Shadowsocks / Direct connection',
   );
   const path = (a: string, b: string) =>

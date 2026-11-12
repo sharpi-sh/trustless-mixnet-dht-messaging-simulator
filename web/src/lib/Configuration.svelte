@@ -105,12 +105,12 @@
             bind:value={cfg.receiver_count}
           /></label
         >
-        {#each channelFields as [key, label]}
+        {#each channelFields as [key, label] (key)}
           <label
             >{label}
             {#if cfg[key]}
               <select aria-label={label} bind:value={cfg[key]}>
-                {#each Object.entries(channelNames) as [value, name]}<option
+                {#each Object.entries(channelNames) as [value, name] (value)}<option
                     {value}>{name}</option
                   >{/each}
               </select>
