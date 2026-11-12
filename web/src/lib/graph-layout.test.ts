@@ -60,7 +60,9 @@ test('keeps stage order and card bounds stable under changing node and path stat
   ];
   const layout = layoutTopology(nodes, paths);
   expect(layout.nodes.size).toBe(nodes.length);
-  expect(layout.nodes.get('alice')!.y).toBeLessThan(210);
+  expect(
+    Math.abs(layout.nodes.get('alice')!.y - (layout.height + 24) / 2),
+  ).toBeLessThanOrEqual(4);
   expect(layout.stages.map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   for (const n of nodes) {
     const p = layout.nodes.get(n.id)!,
@@ -279,4 +281,57 @@ test('retains message-associated device, reply and repeat transits with their au
     ).size,
   ).toBe(64);
   expect(history('lab:1', []).legs.size).toBe(0);
+});
+
+test('same-epoch sliding, replayed and backfilled event windows retain completed source legs', () => {
+  const history = makeTraceHistory();
+  function hop(
+    sequence: number,
+    src: string,
+    dst: string,
+    id: string,
+    phase: string,
+  ): LabEvent {
+    return {
+      sequence,
+      event_id: 'event-' + sequence,
+      simulation_id: 'one',
+      step_id: null,
+      simulation_time_ms: sequence,
+      source_id: src,
+      target_id: dst,
+      message_id: 'msg-1',
+      conversation_id: null,
+      event_type: 'path_transit_' + phase,
+      payload: {
+        token: 'pkt-1',
+        path_id: [src, dst].sort().join('~'),
+        transit_id: id,
+        lane: 'forward',
+        ...(phase === 'started' ? { cargo: { bytes: 512 } } : {}),
+      },
+    };
+  }
+  const rows = [
+    hop(10, 'Alice', 'Tor', 'first', 'started'),
+    hop(11, 'Alice', 'Tor', 'first', 'completed'),
+    hop(12, 'Tor', 'Ingress', 'next', 'started'),
+    hop(13, 'Tor', 'Ingress', 'next', 'completed'),
+  ];
+  history('run', rows.slice(0, 2));
+  history('run', rows.slice(1, 3)); // Same-length sliding window
+  expect(history('run', rows.slice(3)).legs.get('first')).toMatchObject({
+    status: 'completed',
+    cargo: { bytes: 512 },
+    startMs: 10,
+  });
+  expect(history('run', rows).legs.size).toBe(2);
+  const mountedLate = makeTraceHistory();
+  mountedLate('run', rows.slice(1)); // completion but no departure in the partial snapshot
+  expect(mountedLate('run', rows).legs.get('first')).toMatchObject({
+    status: 'completed',
+    cargo: { bytes: 512 },
+    startMs: 10,
+  });
+  expect(history('reset', []).legs.size).toBe(0);
 });

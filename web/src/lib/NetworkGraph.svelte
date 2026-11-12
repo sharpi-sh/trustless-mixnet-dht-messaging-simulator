@@ -44,6 +44,7 @@
     autoFit = $state(true);
   function toggleScreen() {
     expanded = !expanded;
+    fit();
     if (!expanded) screenButton.focus({ preventScroll: true });
   }
   $effect(() => {
@@ -76,7 +77,8 @@
   }
   let zoom = $state(1),
     showAll = $state(false),
-    width = $state(0);
+    width = $state(0),
+    height = $state(0);
   let topologyKey = $derived(
     lab.simulation_id +
       ':' +
@@ -87,8 +89,9 @@
   // The topology IDs drive placement; traffic, coordinates and selected peers are separate concerns.
   let layout = $derived.by(() => {
     void topologyKey;
+    const space = { width, height };
     return untrack(() =>
-      layoutTopology(lab.topology.nodes, lab.topology.paths),
+      layoutTopology(lab.topology.nodes, lab.topology.paths, space),
     );
   });
   let devices = $derived(new Map(lab.devices.map((d) => [d.id, d])));
@@ -166,7 +169,7 @@
         const known = !!other && contacts.has(other);
         const active = Object.entries(p.active);
         const planned =
-            !pinned && ['running', 'paused'].includes(lab.status)
+            showAll && !pinned && ['running', 'paused'].includes(lab.status)
               ? traces.chosen.get(p.id)
               : undefined,
           observed = traces.seen.get(p.id);
@@ -186,18 +189,12 @@
           right.kind === 'dht' ||
           left.kind === 'storage' ||
           right.kind === 'storage';
-        if (substrate && !showAll && !important && !other && !p.completed)
-          return [];
+        if (substrate && !showAll && !important && !other) return [];
         if (
           left.kind === 'dht' &&
           right.kind === 'dht' &&
           !showAll &&
-          !known &&
-          !active.length &&
-          !p.completed &&
-          !p.blocked &&
-          p.id !== selectedPath &&
-          !recentFailure
+          !important
         )
           return [];
         const retryTracks = new Set(
@@ -291,38 +288,44 @@
   );
   let endpoints = $derived(
     transitEndpoints(
-      transits.map((m) => m.t),
+      transits.filter((m) => showAll || m.leg).map((m) => m.t),
       traces.retries,
     ),
   );
-  let visualTime = $state(0),
-    frameEpoch = '';
+  let markerTimes = $state.raw<Record<string, number>>({});
+  let frameEpoch = '';
   $effect(() => {
     const now = lab.simulation_time_ms,
       next = lab.next_step_ms,
-      status = lab.status,
       pace = lab.step_delay_ms;
-    const epoch = lab.simulation_id + ':' + lab.epoch,
-      hasTraffic = transits.length > 0;
-    let start = now;
-    if (frameEpoch === epoch)
-      start = Math.max(
-        now,
-        Math.min(
-          next ?? now,
-          untrack(() => visualTime),
-        ),
-      );
+    const running = lab.status === 'running';
+    const previous = frameEpoch === epoch ? untrack(() => markerTimes) : {};
     frameEpoch = epoch;
-    visualTime = start;
-    if (status !== 'running' || next === null || next <= start || !hasTraffic)
+    const flights = transits.map(({ id, t, leg }) => {
+      const start = Math.max(now, previous[id] ?? t.start_ms);
+      // Playback can batch a background action at this exact logical timestamp.
+      // A payload has its own reported arrival time, independent of the next action.
+      // The moving marker stays inside the link until Python retires the transit.
+      const end = leg ? t.end_ms : Math.min(t.end_ms, next ?? now);
+      return { id, start, end: Math.max(start, end) };
+    });
+    function positions(fraction: number) {
+      return Object.fromEntries(
+        flights.map(({ id, start, end }) => [
+          id,
+          start + (end - start) * fraction,
+        ]),
+      );
+    }
+    markerTimes = positions(0);
+    if (!running || !flights.some((flight) => flight.end > flight.start))
       return;
     const began = performance.now();
     let frame = 0;
     function draw(ts: number) {
-      const t = Math.min(1, (ts - began) / Math.max(1, pace));
-      visualTime = start + (next! - start) * t;
-      if (t < 1) frame = requestAnimationFrame(draw);
+      const fraction = Math.min(1, (ts - began) / Math.max(1, pace));
+      markerTimes = positions(fraction);
+      if (fraction < 1) frame = requestAnimationFrame(draw);
     }
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
@@ -348,18 +351,19 @@
   }
   function zoomBy(f: number) {
     autoFit = false;
-    zoom = Math.max(0.2, Math.min(2, Math.round(zoom * f * 100) / 100));
+    const fitted = Math.min(width / layout.width, height / layout.height);
+    zoom = Math.max(
+      Math.min(0.2, fitted / 2),
+      Math.min(Math.max(2, fitted * 3), zoom * f),
+    );
   }
   function fit() {
     autoFit = true;
     viewport.scrollTo(0, 0);
   }
   $effect(() => {
-    if (autoFit && width > 0)
-      zoom = Math.max(
-        0.35,
-        Math.min(expanded ? 1.5 : 1, (width - 3) / layout.width),
-      );
+    if (autoFit && width > 0 && height > 0)
+      zoom = Math.min(width / layout.width, height / layout.height);
   });
   function handleKey(e: KeyboardEvent, run: () => void) {
     const arrows: Record<string, [number, number]> = {
@@ -453,6 +457,7 @@
       class="graph-viewport"
       bind:this={viewport}
       bind:clientWidth={width}
+      bind:clientHeight={height}
       onpointerdown={down}
       onpointermove={move}
       onpointerup={() => (drag = undefined)}
@@ -519,6 +524,7 @@
             data-path-state={e.state}
             class={'edge ' + e.state}
             class:substrate={e.substrate}
+            class:context={!showAll && !e.known && e.p.id !== selectedPath}
             onclick={() => onPath(e.p.id)}
             onkeydown={(ev) => handleKey(ev, () => onPath(e.p.id))}
           >
@@ -547,6 +553,7 @@
             style:--message-colour={track.colour}
             data-message-id={track.messageId}
             data-message-path={track.pathId}
+            data-leg-status={track.latest.status}
             data-source={track.source}
             data-target={track.target}
             data-lane={track.lane}
@@ -568,6 +575,7 @@
                 .latest.status}</title
             >
             <path class="message-hit" d={track.curve.d} />
+            <path class="message-halo" d={track.curve.d} />
             <path class="message-line" d={track.curve.d} />
             {#if track.latest.status !== 'active'}
               <circle
@@ -575,7 +583,7 @@
                 data-history-leg={track.latest.id}
                 cx={track.dot.x}
                 cy={track.dot.y}
-                r="3.2"
+                r={Math.min(12, 4.4 / zoom)}
               />
             {/if}
           </g>
@@ -739,11 +747,16 @@
         {#each transits as m (m.id)}
           {@const pos = onCurve(
             m.curve,
-            transitFraction(visualTime, m.t.start_ms, m.t.end_ms),
+            transitFraction(
+              markerTimes[m.id] ?? lab.simulation_time_ms,
+              m.t.start_ms,
+              m.t.end_ms,
+            ),
           )}
           <g
             class="marker"
             class:background={!m.leg}
+            class:concealed={!showAll && !m.leg}
             data-message-id={m.leg?.messageId}
             data-transit-id={m.id}
             data-retry={m.retry}
@@ -758,14 +771,17 @@
                 .end_ms} ms</title
             >
             <circle
-              r={m.leg ? 7 : 3.5}
+              r={m.leg ? Math.min(17, 7.5 / zoom) : 3}
               fill={m.leg ? 'white' : m.retry ? '#fff0dd' : '#d6f4df'}
               stroke={m.retry ? '#c0580a' : (m.colour ?? '#77867c')}
               stroke-width={m.leg ? 2 : 1}
-            /><circle r={m.leg ? 4.2 : 1.6} fill={m.colour ?? '#6b7f72'} />
+            /><circle
+              r={m.leg ? Math.min(10, 4.4 / zoom) : 1.2}
+              fill={m.colour ?? '#6b7f72'}
+            />
             {#if m.leg}
               <circle
-                r="8"
+                r={Math.min(20, 9 / zoom)}
                 fill="transparent"
                 class="marker-hit"
                 pointer-events="all"
@@ -886,6 +902,7 @@
         13vw,
         262px
       );
+    grid-template-rows: minmax(0, 1fr);
     height: clamp(350px, 57vh, 620px);
     min-height: 0;
   }
@@ -948,9 +965,6 @@
     }
     .diagram-layout > :global(aside:last-child) {
       border-left: 0;
-    }
-    .expanded .diagram-layout {
-      min-height: 360px;
     }
   }
   .graph-head,
@@ -1030,7 +1044,8 @@
     position: relative;
     overflow: auto;
     max-height: none;
-    min-height: 220px;
+    min-width: 0;
+    min-height: 0;
     overscroll-behavior: contain;
     scrollbar-color: #b9c8bf #edf1ed;
     cursor: grab;
@@ -1174,13 +1189,22 @@
   .edge.substrate.active .stroke {
     stroke: #728d7f;
     stroke-width: 1.3;
-    opacity: 0.65;
+    opacity: 0.36;
   }
   .marker-hit {
     cursor: pointer;
   }
+  .edge.context.active .stroke,
+  .edge.context.completed .stroke {
+    stroke: #a3afa7;
+    stroke-width: 1;
+    opacity: 0.3;
+  }
+  .marker.concealed {
+    display: none;
+  }
   .marker.background {
-    opacity: 0.65;
+    opacity: 0.35;
   }
   .message-track {
     cursor: pointer;
@@ -1189,14 +1213,23 @@
   .message-track path {
     fill: none;
   }
+  .message-halo {
+    stroke: #fff;
+    stroke-width: 5.2;
+    pointer-events: none;
+  }
+  .message-track path,
+  .history-dot {
+    vector-effect: non-scaling-stroke;
+  }
   .message-hit {
     stroke: transparent;
-    stroke-width: 8;
+    stroke-width: 13;
     pointer-events: stroke;
   }
   .message-line {
     stroke: var(--message-colour);
-    stroke-width: 2.4;
+    stroke-width: 3.4;
     pointer-events: none;
   }
   .message-track.failed .message-line {
@@ -1289,7 +1322,7 @@
   }
   .node-label {
     font:
-      600 10px system-ui,
+      600 12px system-ui,
       sans-serif;
     fill: #33483c;
   }
@@ -1306,7 +1339,7 @@
     fill: #56695c;
   }
   .device-time {
-    font: 9px var(--mono, monospace);
+    font: 10px var(--mono, monospace);
     fill: #344b40;
     text-anchor: end;
     font-variant-numeric: tabular-nums;

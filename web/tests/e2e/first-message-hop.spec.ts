@@ -14,7 +14,7 @@ test('first-message stepping pauses at a real device departure and becomes avail
   });
   await expect(seek).toBeEnabled();
   await expect(
-    page.getByText(/Bootstrap and cover traffic can precede/),
+    page.getByText(/Run follows the message from its first hop to Tor/),
   ).toBeVisible();
   await seek.click();
   await expect

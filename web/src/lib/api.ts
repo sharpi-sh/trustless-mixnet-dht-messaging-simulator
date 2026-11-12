@@ -13,6 +13,7 @@ import type {
 
 const blank = (): ClientState => ({
   connection: 'disconnected',
+  messagePacedPlayback: false,
   http: '',
   ws: '',
   version: '',
@@ -40,6 +41,7 @@ type Frame =
   | { type: 'ack' | 'pong'; command_id: string; result?: Reply }
   | { type: 'error'; command_id: string | null; detail: string };
 interface Health {
+  message_paced_playback?: boolean;
   status: string;
   service: string;
   api_version: string;
@@ -262,7 +264,11 @@ export class LabClient {
       }
       this.activeId = selected;
       if (!this.activeId) this.set({ snapshot: null, events: [] });
-      this.set({ version: health.api_version, config });
+      this.set({
+        version: health.api_version,
+        messagePacedPlayback: health.message_paced_playback === true,
+        config,
+      });
       const socket = new WebSocket(this.state.ws);
       this.socket = socket;
       this.ready = crypto.randomUUID();

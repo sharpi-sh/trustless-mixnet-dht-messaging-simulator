@@ -7,10 +7,42 @@ from typing import Any
 from .api_models import Command
 from .config import Config
 from .engine import Intervention
+from .events import Event
 from .lab import Laboratory
+from .lineage import OPERATIONS
 from .steps import Action
 
 FIRST_HOP_STEP_LIMIT = 5000
+# Keep controls and the event stream live while stepping over protocol traffic.
+STREAM_BATCH_STEPS = 32
+IDLE_PLAYBACK_STEPS = 256
+MESSAGE_EVENTS = OPERATIONS.keys() | {
+    "path_transit_started",
+    "path_transit_completed",
+    "path_transit_failed",
+    "mix_packet_queued",
+    "mix_packet_released",
+    "packet_retry_scheduled",
+    "device_unavailable",
+    "message_delivery_failed",
+}
+
+
+def _message_frame(events: list[Event], first_departure: int | None) -> bool:
+    for event in events:
+        if first_departure is not None and event.sequence >= first_departure:
+            if event.event_type == "poll_message_found":
+                return True
+            if event.message_id and event.event_type in MESSAGE_EVENTS:
+                return True
+        elif event.message_id and event.event_type in {
+            "path_transit_failed",
+            "device_unavailable",
+            "message_delivery_failed",
+        }:
+            # An interrupted first attempt must be visible even before any departure.
+            return True
+    return False
 
 
 @dataclass
@@ -26,8 +58,14 @@ class _Session:
     changed: asyncio.Condition = field(default_factory=asyncio.Condition)
     speed_changed: asyncio.Event = field(default_factory=asyncio.Event)
     runner: asyncio.Task[None] | None = None
+    published_sequence: int = 0
     first_hop_budget: int = 0
     receipts: dict[str, _Receipt] = field(default_factory=dict)
+
+    def publish(self) -> None:
+        # Late subscribers must wait for the same frame boundary as existing ones.
+        self.published_sequence = len(self.lab.events)
+        self.changed.notify_all()
 
 
 class Service:
@@ -42,7 +80,7 @@ class Service:
             raise ValueError("Simulation service is closed")
         lab = Laboratory(config)
         lab.emit("simulation_created", Action(), random_seed=lab.seed)
-        self._sessions[lab.id] = _Session(lab)
+        self._sessions[lab.id] = _Session(lab, published_sequence=len(lab.events))
         self.epochs[lab.id] = 0
         self.current = lab
         return lab
@@ -57,7 +95,7 @@ class Service:
                 lambda: (
                     self._closed
                     or self.epochs[simulation_id] != epoch
-                    or len(session.lab.events) != seq
+                    or session.published_sequence > seq
                 )
             )
 
@@ -75,9 +113,11 @@ class Service:
     async def _play(self, session: _Session) -> None:
         lab = session.lab
         loop = asyncio.get_running_loop()
+        background_steps = 0
         try:
             while lab.status == "running" and session.runner is asyncio.current_task():
                 async with session.changed:
+                    cursor = len(lab.events)
                     if not lab.queue:
                         self._failed(
                             lab, "No steps remain before the simulation reached a terminal state"
@@ -102,11 +142,27 @@ class Service:
                                 departure_sequence=lab.first_message_hop_sequence,
                                 limit=FIRST_HOP_STEP_LIMIT,
                             )
-                    session.changed.notify_all()
+                    frame = _message_frame(lab.events[cursor:], lab.first_message_hop_sequence)
+                    background_steps = 0 if frame else background_steps + 1
+                    idle_limit = (
+                        FIRST_HOP_STEP_LIMIT
+                        if lab.first_message_hop_sequence is None
+                        else IDLE_PLAYBACK_STEPS
+                    )
+                    dwell = frame or background_steps >= idle_limit
+                    if dwell:
+                        background_steps = 0
+                    if (
+                        dwell
+                        or not lab.step_delay_ms
+                        or background_steps % STREAM_BATCH_STEPS == 0
+                        or lab.status != "running"
+                    ):
+                        session.publish()
                 if lab.status != "running":
                     break
-                if lab.step_delay_ms == 0 or session.first_hop_budget:
-                    # Max-speed playback still gives commands and stream readers a turn.
+                if not dwell or lab.step_delay_ms == 0 or session.first_hop_budget:
+                    # All scheduler actions run in order; each one yields to controls.
                     await asyncio.sleep(0)
                     continue
                 stepped = loop.time()
@@ -122,7 +178,7 @@ class Service:
         except Exception as exc:  # noqa: BLE001 - a runner fault must reach subscribed clients
             async with session.changed:
                 self._failed(lab, f"{type(exc).__name__}: {exc}")
-                session.changed.notify_all()
+                session.publish()
         finally:
             if session.runner is asyncio.current_task():
                 session.runner = None
@@ -243,7 +299,7 @@ class Service:
                 session.receipts[cmd.command_id] = _Receipt(request, error=str(exc))
                 raise ValueError(str(exc)) from exc
             finally:
-                session.changed.notify_all()
+                session.publish()
             result = {"status": lab.status}
             session.receipts[cmd.command_id] = _Receipt(request, result=result)
             return result.copy()
@@ -256,6 +312,6 @@ class Service:
                 if session.runner is not None:
                     runners.append(session.runner)
                     self._cancel_runner(session)
-                session.changed.notify_all()
+                session.publish()
         if runners:
             await asyncio.gather(*runners, return_exceptions=True)

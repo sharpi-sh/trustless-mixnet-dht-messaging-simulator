@@ -131,7 +131,6 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await page
     .getByRole('combobox', { name: /^Inspect path/ })
     .selectOption(path.id);
-  await button('Run').click();
   await button('Block path').click();
   const graph = page.getByRole('group', {
     name: 'Network topology',
@@ -140,6 +139,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(
     graph.locator('[data-path-id="' + path.id + '"]'),
   ).toHaveAttribute('data-path-state', 'blocked');
+  await button('Run').click();
   const slider = page.getByRole('slider', { name: /Playback delay/i });
   await changePace(slider, 12);
   await expect.poll(async () => (await read()).step_delay_ms).toBe(12);

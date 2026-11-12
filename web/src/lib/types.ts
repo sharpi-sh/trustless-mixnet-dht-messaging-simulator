@@ -237,6 +237,7 @@ export type Connection =
   | 'reconnecting'
   | 'error';
 export interface ClientState {
+  messagePacedPlayback: boolean;
   connection: Connection;
   http: string;
   ws: string;
