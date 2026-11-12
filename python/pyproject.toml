@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mixnet-laboratory"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.119,<1", "uvicorn[standard]>=0.35,<1", "cryptography>=45,<50", "pydantic>=2.11,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=6", "httpx>=0.28,<1", "ruff>=0.11", "mypy>=1.16"]
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+files = ["app", "main.py"]
+check_untyped_defs = true
+
+[tool.ruff]
+line-length = 104
