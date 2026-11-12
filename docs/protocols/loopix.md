@@ -13,3 +13,15 @@ The observer has identity and lifecycle only. No anonymity, sender authenticatio
 ### Mailbox discovery
 
 The experimental adapter can place an opaque lookup handle in the associated provider’s local inbox after the encrypted manifest has been published. The device must poll its own provider before learning that handle. The handle opens a Kademlia lookup for an encrypted manifest. This keeps application lookup separate from Sphinx forwarding and avoids requiring a prearranged secret or a shared sender directory. A provider can correlate its local client, handle and timing.
+
+### What appears first on the diagram
+
+The DHT bootstraps at logical time zero. Each sender queues its encrypted message and waits for its own Loopix payload clock to fire. That packet starts at the sender’s device and crosses its Tor boundary before reaching the provider. DHT bootstrap, cover traffic and client polling can all precede the first payload.
+
+### Providers and retrieval privacy
+
+West and East indicate the client groups served by the two simulated provider servers. Both can receive packets from clients and act as egress for the other group. Each client has one provider association. An outage interrupts service for dependent clients, even when the mix relays and vault replicas are healthy.
+
+An extension for independent operators would need a directory of signed provider descriptors, authenticated addresses and keys, admission rules that limit Sybil registrations, and a client selection policy using capacity and availability. Clients could register with multiple providers. Failover of existing mailboxes would also require replicated encrypted mailbox state, duplicate suppression and a way to find the new provider. A load balancer alone only distributes work within one provider service. Multiple providers holding the same mailbox state would gain additional opportunities for correlation. These are proposed changes to the experimental application.
+
+A recipient polls its provider, resolves the encrypted manifest and fetches encrypted fragments through its own Tor boundary. These reads bypass the mix layers. A vault sees ciphertext and access patterns. An observer able to compare times or repeated identifiers across services could link a deposit and retrieval. Routing requests and replies through independent mix paths, with padded and scheduled reads, would change this exposure and increase retrieval latency. The simulator provides no end-to-end anonymity guarantee.

@@ -72,6 +72,9 @@ test('inspectors render device fingerprints, node-specific protocol details and 
       props: { ...inspectProps, selectedNode: id, details: details[id] },
     });
     expect(body).toContain(expected);
+    if (id === 'provider-east')
+      expect(body).toContain('East serves the recipient devices');
+    if (id === 'storage-1') expect(body).toContain('encrypted fragments');
     expect(body).toContain(details[id].profile.id);
   }
   const pathHtml = render(Inspector, {

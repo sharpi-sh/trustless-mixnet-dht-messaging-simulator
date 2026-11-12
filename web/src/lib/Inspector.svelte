@@ -20,6 +20,17 @@
     onNode: (id: string) => void;
     onPath: (id: string) => void;
   } = $props();
+  const components = {
+    person:
+      'A simulated handset or computer running the messaging client. It holds the device’s private key, encrypts outgoing text and decrypts incoming messages. The enclosed public key lets the recipient encrypt a reply. Its owner is unverified.',
+    tor: 'A model of the Tor connection used by one device. It represents client and relay software as one boundary. Provider polling, DHT queries and vault downloads pass through it. Direct vault reads expose retrieval timing outside the mixnet.',
+    provider:
+      'A simulated server running a Loopix provider. It accepts Sphinx packets from its clients, forwards them to the first mix layer, and holds mailbox handles for periodic collection. At egress it hands the encrypted bundle to the storage gateway.',
+    mix: 'A simulated relay server running a Loopix mix. It checks the packet and replay tag, removes one Sphinx layer, waits for the encoded delay and forwards to the encoded next hop.',
+    dht: 'A simulated server running a Kademlia peer. Its local routing table guides XOR-distance lookups for encrypted manifests. Peers exchange bootstrap traffic as soon as the network starts.',
+    storage:
+      'A simulated storage server running a vault service. It keeps encrypted fragments and serves replicas by identifier. The vault can observe request times, sizes and repeated reads.',
+  };
   const tabs = ['Protocol state', 'Activity', 'Lineage'] as const;
   let tab = $state<(typeof tabs)[number]>('Protocol state');
   let pageSize = $state(25);
@@ -125,6 +136,13 @@
         >{node.online ? 'Online' : 'Offline'}</span
       >
     </header>
+    <p>{components[node.kind]}</p>
+    {#if node.kind === 'provider'}<p>
+        {node.id === 'provider-west'
+          ? 'West serves the sender devices.'
+          : 'East serves the recipient devices.'} The names indicate diagram positions.
+        Each side has one provider, so an outage interrupts that side until recovery.
+      </p>{/if}
     <dl class="facts">
       {@render datum('Node ID', node.id, true)}{@render datum(
         'Address',
