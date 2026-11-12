@@ -19,6 +19,7 @@ class Action:
     source: str = ""
     target: str = ""
     token: str = ""
+    message_id: str = ""
     lane: Literal["forward","reply"] = "forward"
 
 
