@@ -6,5 +6,13 @@
     "checkJs": true,
     "resolveJsonModule": true,
     "skipLibCheck": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "build",
+    "coverage",
+    "test-results",
+    "playwright-report",
+    "src/service-worker.*"
+  ]
 }
