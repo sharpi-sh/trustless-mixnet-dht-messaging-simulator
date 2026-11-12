@@ -8,7 +8,7 @@
     transitFraction,
     contactIds,
     makeTraceHistory,
-    messageColour,
+    makeTrackRenderer,
     type MessageLeg,
     extractRoute,
     transitEndpoints,
@@ -130,22 +130,12 @@
   let pathMap = $derived(
     new Map(lab.topology.paths.map((path) => [path.id, path])),
   );
+  const renderTrack = $derived(makeTrackRenderer(layout));
   let messageTracks = $derived.by(() =>
     Array.from(traces.messageTracks.values()).flatMap((track) => {
-      const a = layout.nodes.get(track.source),
-        b = layout.nodes.get(track.target);
-      if (!a || !b || !pathMap.has(track.pathId)) return [];
+      if (!pathMap.has(track.pathId)) return [];
       const latest = traces.legs.get(track.legs[track.legs.length - 1])!;
-      const curve = laneCurve(a, b, track.lane, track.offset);
-      return [
-        {
-          ...track,
-          latest,
-          curve,
-          dot: onCurve(curve, 0.5),
-          colour: messageColour(track.messageId),
-        },
-      ];
+      return renderTrack(track, latest) ?? [];
     }),
   );
   let messageTrackMap = $derived(

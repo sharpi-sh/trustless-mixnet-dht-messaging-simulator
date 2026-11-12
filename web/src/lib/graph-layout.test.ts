@@ -3,6 +3,7 @@ import {
   contactIds,
   extractRoute,
   makeTraceHistory,
+  makeTrackRenderer,
   messageColour,
   transitEndpoints,
   laneCurve,
@@ -303,9 +304,16 @@ test('retains message-associated device, reply and repeat transits with their au
   expect(first.legs).toEqual(['one', 'three']);
   expect(reply.lane).toBe('reply');
   expect(other.offset).not.toBe(first.offset);
-  const { nodes } = layoutTopology(
+  const layout = layoutTopology(
     [node('alice', 'person', 0), node('tor-alice', 'tor', 1)],
     [],
+  );
+  const { nodes } = layout;
+  const renderTrack = makeTrackRenderer(layout);
+  const rendered = renderTrack(first, started);
+  expect(renderTrack(first, started)).toBe(rendered);
+  expect(renderTrack(first, data.legs.get('one')!)?.latest.status).toBe(
+    'completed',
   );
   const curve = (offset: number) =>
     laneCurve(nodes.get('alice')!, nodes.get('tor-alice')!, 'forward', offset);
