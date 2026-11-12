@@ -2,7 +2,8 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from math import floor, log1p
+from fractions import Fraction
+from math import log1p
 from random import Random
 from typing import Literal
 
@@ -52,12 +53,12 @@ class Availability:
 
     def _next(self, rng: Random, now: int, timer: AvailabilityTimer) -> Schedule:
         probability = self.config.failure_probability
-        if probability == 0:
+        if probability == 0 or self.config.max_outage_ms == 0:
             return []
         trials = 1
         if probability < 1:
             # Invert the geometric CDF instead of scheduling repeated healthy checks.
-            trials += floor(log1p(-rng.random()) / log1p(-probability))
+            trials += Fraction(log1p(-rng.random())) // Fraction(log1p(-probability))
         return [(now + trials * self.config.min_online_ms, timer)]
 
     def start(self) -> Schedule:
@@ -68,6 +69,7 @@ class Availability:
         self.started = True
         schedule: Schedule = []
         cfg = self.config
+        group_ready: dict[str, int] = defaultdict(int)
         for uid, stream in self.node_rng.items():
             always_offline = cfg.pattern == "always_offline"
             if cfg.pattern in {"random", "bursty"}:
@@ -85,7 +87,8 @@ class Availability:
                 )
             if uid in self.permanent or cfg.pattern not in {"random", "bursty"}:
                 continue
-            self.members[self.topology.nodes[uid].operator_id].append(uid)
+            operator = self.topology.nodes[uid].operator_id
+            self.members[operator].append(uid)
             initial_duration = 0
             if stream.random() < cfg.initial_offline_probability:
                 initial_duration = self._duration(stream)
@@ -100,6 +103,7 @@ class Availability:
                         ),
                     )
                 )
+            group_ready[operator] = max(group_ready[operator], initial_duration)
             if cfg.pattern == "random":
                 schedule += self._next(
                     stream,
@@ -107,15 +111,12 @@ class Availability:
                     AvailabilityTimer(kind="random_outage", source=uid, reason="random outage"),
                 )
         if cfg.pattern == "bursty":
-            for operator, members in self.members.items():
-                if members:
-                    schedule += self._next(
-                        self.operator_rng[operator],
-                        0,
-                        AvailabilityTimer(
-                            kind="operator_burst", source=operator, reason="operator burst"
-                        ),
-                    )
+            for operator in self.members:
+                schedule += self._next(
+                    self.operator_rng[operator],
+                    group_ready[operator],
+                    AvailabilityTimer(kind="operator_burst", source=operator, reason="operator burst"),
+                )
         schedule += self._scheduled()
         return schedule
 
