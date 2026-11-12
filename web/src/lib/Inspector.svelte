@@ -137,13 +137,14 @@
         >{node.online ? 'Online' : 'Offline'}</span
       >
     </header>
-    <p>
-      {components[node.kind]}{#if device?.signing_fingerprint}
+    <p>{components[node.kind]}</p>
+    {#if device?.signing_fingerprint}
+      <p>
         This device signs outgoing messages with Ed25519. The recipient checks
         the signature against the simulated directory’s key for the expected
         sender before accepting the message and reply key.
-      {/if}
-    </p>
+      </p>
+    {/if}
     {#if node.kind === 'provider'}<p>
         {node.id === 'provider-west'
           ? 'West serves the sender devices.'
