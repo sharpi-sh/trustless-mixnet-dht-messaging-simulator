@@ -20,6 +20,19 @@ test('keeps runtime controls with the topology and inspection alongside the even
   await topology.locator('[data-node-id="sender-1"]').click();
   const inspector = page.getByRole('complementary', { name: 'Node inspector' });
   await expect(inspector).toBeVisible();
+  const availability = interventions.getByRole('group', {
+    name: 'Node availability',
+  });
+  await expect(availability.locator('img')).toHaveAttribute(
+    'src',
+    '/avatars/sender-1.jpg',
+  );
+  await availability.getByRole('button', { name: 'Take node offline' }).click();
+  await page.mouse.move(0, 0);
+  await expect(
+    availability.getByRole('button', { name: 'Bring node online' }),
+  ).toHaveCSS('background-color', 'rgb(163, 44, 48)');
+  await availability.getByRole('button', { name: 'Bring node online' }).click();
   const panel = page.locator('.information');
   await expect(panel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   const timeline = page.getByRole('region', { name: 'Event timeline' });
