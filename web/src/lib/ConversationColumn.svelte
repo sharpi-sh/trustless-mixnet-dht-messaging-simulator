@@ -4,6 +4,7 @@
   import {
     chatRows,
     inboxContacts,
+    inboxPreviewRows,
     lastActivity,
     logicalStamp,
     verifiedSigner,
@@ -38,12 +39,16 @@
   const names = $derived(new Map(devices.map((d) => [d.id, d.label])));
   const history = $derived(chatRows(person?.logs ?? []));
   const inbox = $derived(inboxContacts(history, messages, person?.id));
+  const inboxMode = $derived(role === 'receiver' && !selectedPeer);
+  const previews = $derived(inboxPreviewRows(history, inbox.peers));
   const rows = $derived(
-    selectedPeer
-      ? history.filter(
-          (row) => inbox.peers.get(row.conversation_id) === selectedPeer,
-        )
-      : history,
+    inboxMode
+      ? previews.map((preview) => preview.row)
+      : selectedPeer
+        ? history.filter(
+            (row) => inbox.peers.get(row.conversation_id) === selectedPeer,
+          )
+        : history,
   );
   const times = $derived(lastActivity(person?.logs ?? []));
   $effect(() => {
@@ -119,31 +124,67 @@
   >
     {#if rows.length}
       <ol aria-label={person.label + ' chat messages'}>
-        {#each rows as row (row.message_id)}
-          {@const own = row.state !== 'received'}
-          {@const signer = verifiedSigner(row)}
-          <li
-            class:outgoing={own}
-            data-message-id={row.message_id}
-            data-side={own ? 'outgoing' : 'incoming'}
-            style:--message-colour={messageColour(row.message_id)}
-          >
-            <div class="bubble">
-              <div class="author">
-                <i></i>{own
-                  ? 'You'
-                  : signer
-                    ? (names.get(signer) ?? signer)
-                    : 'Unverified sender'}
-              </div>
-              <p>{row.text}</p>
-              {#if !own}<SignatureReceipt {row} />{/if}
-            </div>
-            <time title={row.simulation_time_ms + ' ms'}
-              >{logicalStamp(row.simulation_time_ms)}</time
+        {#if inboxMode}
+          {#each previews as preview (preview.peer)}
+            {@const label = names.get(preview.peer) ?? preview.peer}
+            <li
+              class="inbox-preview-row"
+              data-message-id={preview.row.message_id}
+              data-side="incoming"
+              data-peer-id={preview.peer}
             >
-          </li>
-        {/each}
+              <button
+                type="button"
+                class="inbox-preview"
+                aria-label={'Open conversation with ' + label}
+                onclick={() => {
+                  following = true;
+                  selectedPeer = preview.peer;
+                }}
+              >
+                <img
+                  src={avatarUrl(preview.peer)}
+                  alt=""
+                  width="34"
+                  height="34"
+                />
+                <span class="preview-copy">
+                  <strong>{label}</strong>
+                  <p>{preview.row.text}</p>
+                  <time title={preview.row.simulation_time_ms + ' ms'}
+                    >{logicalStamp(preview.row.simulation_time_ms)}</time
+                  >
+                </span>
+              </button>
+            </li>
+          {/each}
+        {:else}
+          {#each rows as row (row.message_id)}
+            {@const own = row.state !== 'received'}
+            {@const signer = verifiedSigner(row)}
+            <li
+              class:outgoing={own}
+              data-message-id={row.message_id}
+              data-side={own ? 'outgoing' : 'incoming'}
+              style:--message-colour={messageColour(row.message_id)}
+            >
+              <div class="bubble">
+                <div class="author">
+                  <i></i>{own
+                    ? 'You'
+                    : signer
+                      ? (names.get(signer) ?? signer)
+                      : 'Unverified sender'}
+                </div>
+                <p>{row.text}</p>
+                {#if !own}<SignatureReceipt {row} />{/if}
+              </div>
+              <time title={row.simulation_time_ms + ' ms'}
+                >{logicalStamp(row.simulation_time_ms)}</time
+              >
+            </li>
+          {/each}
+        {/if}
       </ol>
     {:else}<p class="empty">No messages yet.</p>{/if}
   </div>
@@ -273,6 +314,55 @@
   li.outgoing {
     align-self: flex-end;
     align-items: flex-end;
+  }
+  li.inbox-preview-row {
+    width: 100%;
+    max-width: none;
+  }
+  .inbox-preview {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    border: 1px solid #dce4de;
+    border-radius: 9px;
+    padding: 8px;
+    background: #f5f7f4;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .inbox-preview:hover {
+    border-color: #aabbb0;
+    background: #eef3ef;
+  }
+  .inbox-preview:focus-visible {
+    outline: 2px solid #167043;
+    outline-offset: 2px;
+  }
+  .inbox-preview img {
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  .preview-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+  .preview-copy strong {
+    font-size: 0.7rem;
+  }
+  .preview-copy > p {
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preview-copy time {
+    justify-self: end;
   }
   .bubble {
     background: #edf0ec;

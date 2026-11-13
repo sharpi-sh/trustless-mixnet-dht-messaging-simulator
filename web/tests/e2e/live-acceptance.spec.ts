@@ -410,24 +410,63 @@ test('completes the live thirty-transmission scenario with edited text, polling,
       ['sent', 'replied', 'received'].includes(row.state),
     );
     const rows = messages.locator('li');
-    expect(
-      await rows.evaluateAll((items) =>
+    const readRows = () =>
+      rows.evaluateAll((items) =>
         items.map((row) => [
           row.getAttribute('data-message-id'),
           row.getAttribute('data-side'),
           row.querySelector('p')?.textContent,
           row.querySelector('time')?.getAttribute('title'),
         ]),
-      ),
-    ).toEqual(
-      sentReceived.map((row) => [
+      );
+    const expectedRows = (visible: typeof sentReceived) =>
+      visible.map((row) => [
         row.message_id,
         row.state === 'received' ? 'incoming' : 'outgoing',
         row.text,
         row.simulation_time_ms + ' ms',
-      ]),
+      ]);
+    const peers = new Map(
+      final.messages.flatMap((message) =>
+        message.target_id === device.id
+          ? [[message.conversation_id, message.sender_id] as const]
+          : message.sender_id === device.id
+            ? [[message.conversation_id, message.target_id] as const]
+            : [],
+      ),
     );
-    const incoming = sentReceived.filter((row) => row.state === 'received');
+    const latest = new Map<
+      string,
+      { row: (typeof sentReceived)[number]; index: number }
+    >();
+    sentReceived.forEach((row, index) => {
+      const peer = peers.get(row.conversation_id);
+      if (row.state === 'received' && peer) latest.set(peer, { row, index });
+    });
+    let visible =
+      role === 'receiver'
+        ? [...latest.values()]
+            .sort((a, b) => a.index - b.index)
+            .map(({ row }) => row)
+        : sentReceived;
+    expect(await readRows()).toEqual(expectedRows(visible));
+    if (role === 'receiver' && visible.length) {
+      const peer = peers.get(visible[0].conversation_id)!;
+      const label = final.devices.find(
+        (candidate) => candidate.id === peer,
+      )!.label;
+      await panel
+        .getByRole('button', {
+          name: 'Open conversation with ' + label,
+          exact: true,
+        })
+        .click();
+      visible = sentReceived.filter(
+        (row) => peers.get(row.conversation_id) === peer,
+      );
+      expect(await readRows()).toEqual(expectedRows(visible));
+    }
+    const incoming = visible.filter((row) => row.state === 'received');
     await expect(
       messages.getByText('Signature verified', { exact: true }),
     ).toHaveCount(incoming.length);
@@ -473,7 +512,7 @@ test('completes the live thirty-transmission scenario with edited text, polling,
   await expect(recipient.locator('li')).toHaveCount(10);
   await contact.click();
   await expect(contact).toHaveAttribute('aria-pressed', 'false');
-  await expect(recipient.locator('li')).toHaveCount(30);
+  await expect(recipient.locator('li')).toHaveCount(3);
   expect(errors).toEqual([]);
   if (process.env.SIM_GRAPH_EVIDENCE) {
     await mkdir(process.env.SIM_GRAPH_EVIDENCE, { recursive: true });
