@@ -211,10 +211,10 @@ class Topology:
                 f"West provider {idx}",
                 "provider",
                 2,
-                "Loopix",
+                "West providers",
             )
         for provider in self.mixnet.east_providers:
-            self.add_node(provider, "East provider", "provider", 6, "East provider")
+            self.add_node(provider, "East provider", "provider", 6, "East providers")
         for provider in self.mixnet.service_providers:
             self.add_node(
                 provider,

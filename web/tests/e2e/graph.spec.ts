@@ -143,6 +143,10 @@ for (const count of [6, 10, 20]) {
       await expect(graph.locator('[data-group-id="dht"] text')).toHaveText(
         'DHT',
       );
+      await expect(graph.locator('.band.provider text')).toHaveText([
+        'West providers',
+        'East providers',
+      ]);
       const mixId = topology.find((n) => n.kind === 'mix')!.id;
       const mixCard = await graph
         .locator('[data-node-id="' + mixId + '"] [data-card]')

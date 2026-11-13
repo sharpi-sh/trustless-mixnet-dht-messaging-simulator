@@ -615,6 +615,8 @@
             class:failed={track.latest.status === 'failed'}
             class:chosen={pickedTrack?.id === track.id}
             class:journey-selected={selectedJourneyId === track.messageId}
+            class:journey-muted={!!selectedJourneyId &&
+              selectedJourneyId !== track.messageId}
             style:--message-colour={track.colour}
             data-message-id={track.messageId}
             data-message-path={track.pathId}
@@ -623,6 +625,8 @@
             data-target={track.target}
             data-lane={track.lane}
             data-journey-selected={selectedJourneyId === track.messageId}
+            data-journey-muted={!!selectedJourneyId &&
+              selectedJourneyId !== track.messageId}
             role="button"
             tabindex="0"
             aria-label={track.messageId +
@@ -1353,6 +1357,9 @@
   }
   .message-track.journey-selected .message-line {
     stroke-width: 2.5;
+  }
+  .message-track.journey-muted {
+    opacity: 0.1;
   }
   .history-dot {
     fill: var(--message-colour);

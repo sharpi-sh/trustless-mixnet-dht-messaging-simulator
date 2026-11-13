@@ -162,6 +162,15 @@ test('shows Alice’s IP at Shadowsocks, the proxy IP at the provider and Bob’
         '"]',
     );
     await retained.press('Enter');
+    const selectedJourney = graph.locator(
+      '[data-message-id="' + messageId + '"][data-journey-selected="true"]',
+    );
+    await expect(selectedJourney.first()).toHaveCSS('opacity', '1');
+    const otherMessageId = messageId === 'msg-1' ? 'msg-2' : 'msg-1';
+    const mutedJourney = graph.locator(
+      '[data-message-id="' + otherMessageId + '"][data-journey-muted="true"]',
+    );
+    await expect(mutedJourney.first()).toHaveCSS('opacity', '0.1');
     const record = page.getByRole('region', {
       name: 'Recorded IP visibility',
       exact: true,
