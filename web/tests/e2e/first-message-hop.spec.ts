@@ -48,7 +48,7 @@ test('first-message stepping pauses at a real device departure and becomes avail
   await track.press('Enter');
   await expect(track.locator('.message-line')).toHaveCSS(
     'stroke-width',
-    '1.75px',
+    '2.5px',
   );
   const leg = page.locator(
     '[data-selected-leg="' + departure.payload.transit_id + '"]',
