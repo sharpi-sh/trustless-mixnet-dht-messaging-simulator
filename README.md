@@ -1,5 +1,7 @@
 # Trustless Mixnet DHT Messaging Simulator
 
+![Trustless messaging network laboratory showing Loopix routing, DHT nodes, encrypted vaults and conversation threads](docs/images/network-laboratory.webp)
+
 A distributed, trustless and anonymity-focused messaging network simulator using mixnet routing, DHT discovery and decentralised encrypted storage.
 
 ## The problem
