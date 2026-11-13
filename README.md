@@ -14,6 +14,14 @@ The objective is a private, trustless delivery model in which network nodes may 
 
 This is a thought experiment implemented as a local simulation of the relevant hardware roles, network nodes and protocol behaviour. It does not prove complete anonymity, untraceability or production security.
 
+## Why?
+
+This project was primarily an experiment in testing how effectively GPT-6 Astra, using high reasoning, could turn a thorough specification written in Spec Kit format into a working application.
+
+The original idea came from a literal dream about a decentralised anonymous messaging and file-hosting system that combined concepts associated with Signal, Tor, BitTorrent and blockchains. Independent, potentially serverless nodes could appear, contribute capacity, process or store encrypted material and later leave, without any single operator knowing where everything was held or what it contained.
+
+Building and experimenting with the simulator raised further architectural, reliability and deployment questions. Those possible extensions are recorded in the [Production roadmap](docs/production-roadmap.md).
+
 ## What the simulator models
 
 The simulator makes an end-to-end message journey visible and inspectable:
