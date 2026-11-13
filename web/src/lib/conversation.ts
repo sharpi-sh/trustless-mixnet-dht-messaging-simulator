@@ -53,6 +53,22 @@ export function inboxContacts(
   return { peers, received };
 }
 
+export function inboxPreviewRows(
+  logs: DeviceLog[],
+  peers: ReadonlyMap<string, string>,
+) {
+  const latest = new Map<
+    string,
+    { peer: string; row: DeviceLog; index: number }
+  >();
+  logs.forEach((row, index) => {
+    const peer = peers.get(row.conversation_id);
+    if (row.state === 'received' && peer)
+      latest.set(peer, { peer, row, index });
+  });
+  return [...latest.values()].sort((a, b) => a.index - b.index);
+}
+
 export function lastActivity(logs: DeviceLog[]) {
   let sent: number | null = null,
     received: number | null = null;

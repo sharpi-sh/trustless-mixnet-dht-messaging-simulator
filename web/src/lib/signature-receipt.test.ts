@@ -21,10 +21,16 @@ test('the chat names the verified signer and exposes the complete signing finger
     verified_signer_id: signer.id,
     signing_fingerprint: signer.signing_fingerprint,
   };
+  const owner = {
+    ...snapshot.devices[0],
+    id: 'sender-1',
+    role: 'sender' as const,
+    logs: [receipt],
+  };
   const body = render(ConversationColumn, {
     props: {
-      role: 'receiver',
-      devices: [{ ...snapshot.devices[0], logs: [receipt] }, signer],
+      role: 'sender',
+      devices: [owner, signer],
       messages: snapshot.messages,
     },
   }).body;
@@ -41,12 +47,16 @@ test.each([
 ])(
   'receipts without complete verification evidence stay unverified',
   (partial) => {
+    const owner = {
+      ...snapshot.devices[0],
+      id: 'sender-1',
+      role: 'sender' as const,
+      logs: [{ ...received, ...partial }],
+    };
     const body = render(ConversationColumn, {
       props: {
-        role: 'receiver',
-        devices: [
-          { ...snapshot.devices[0], logs: [{ ...received, ...partial }] },
-        ],
+        role: 'sender',
+        devices: [owner],
         messages: snapshot.messages,
       },
     }).body;

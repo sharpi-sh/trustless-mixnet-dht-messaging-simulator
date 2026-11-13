@@ -2,7 +2,12 @@ import { render } from 'svelte/server';
 import ConversationColumn from './ConversationColumn.svelte';
 import { snapshot } from './fixtures/control-state';
 import { expect, test } from 'vitest';
-import { chatRows, lastActivity, logicalStamp } from './conversation';
+import {
+  chatRows,
+  inboxPreviewRows,
+  lastActivity,
+  logicalStamp,
+} from './conversation';
 import type { DeviceLog } from './types';
 
 test('preserves each device log’s original order, including equal timestamps', () => {
@@ -32,7 +37,40 @@ test('preserves each device log’s original order, including equal timestamps',
   expect(logicalStamp(3600500)).toBe('1:00:00.500');
 });
 
-test('shows the selected participant’s message history, address and last activity in the chat', () => {
+test('keeps only the latest received message per sender in inbox order', () => {
+  const row = (
+    state: DeviceLog['state'],
+    message_id: string,
+    conversation_id: string,
+  ): DeviceLog => ({
+    state,
+    message_id,
+    conversation_id,
+    simulation_time_ms: 1,
+    text: message_id,
+    direction: 'forward',
+  });
+  const peers = new Map([
+    ['alice-chat', 'sender-1'],
+    ['nina-chat', 'sender-2'],
+  ]);
+  const previews = inboxPreviewRows(
+    [
+      row('received', 'alice-old', 'alice-chat'),
+      row('replied', 'bob-reply', 'alice-chat'),
+      row('received', 'nina-latest', 'nina-chat'),
+      row('received', 'alice-latest', 'alice-chat'),
+      row('received', 'unknown', 'unknown-chat'),
+    ],
+    peers,
+  );
+  expect(previews.map(({ peer, row }) => [peer, row.message_id])).toEqual([
+    ['sender-2', 'nina-latest'],
+    ['sender-1', 'alice-latest'],
+  ]);
+});
+
+test('shows participant activity while hiding receiver replies in inbox mode', () => {
   const first = snapshot.devices[0];
   const second = {
     ...first,
@@ -61,7 +99,8 @@ test('shows the selected participant’s message history, address and last activ
   expect(body).toContain('data-chat-owner="receiver-2"');
   expect(body).toContain('10.77.0.5');
   expect(body).toContain('data-last-sent="23"');
-  expect(body).toContain('From Lena');
+  expect(body).toContain('No messages yet.');
+  expect(body).not.toContain('From Lena');
 });
 
 test('renders one portrait per incoming contact and counts only received entries', () => {
@@ -94,7 +133,19 @@ test('renders one portrait per incoming contact and counts only received entries
     props: {
       role: 'receiver',
       devices: [
-        { ...bob, logs: [...logs, { ...logs[2], state: 'delivered' }] },
+        {
+          ...bob,
+          logs: [
+            ...logs,
+            { ...logs[2], state: 'delivered' },
+            {
+              ...logs[0],
+              state: 'replied',
+              message_id: 'receiver-reply',
+              text: 'Receiver reply hidden from inbox',
+            },
+          ],
+        },
         alice,
         nina,
         chris,
@@ -104,7 +155,10 @@ test('renders one portrait per incoming contact and counts only received entries
   });
   expect(body).toContain('aria-label="Alice, 2 messages received"');
   expect(body).toContain('aria-label="Nina, 1 message received"');
+  expect(body).toContain('aria-label="Open conversation with Alice"');
+  expect(body).toContain('aria-label="Open conversation with Nina"');
   expect(body).toContain('src="/avatars/sender-1.jpg"');
   expect(body).not.toContain('/avatars/sender-3.jpg');
+  expect(body).not.toContain('Receiver reply hidden from inbox');
   expect(body).not.toContain('<select');
 });
